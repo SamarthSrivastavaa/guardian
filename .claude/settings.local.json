@@ -1,0 +1,17 @@
+{
+  "permissions": {
+    "allow": [
+      "PowerShell(node scripts/probe-testnet.mjs)",
+      "PowerShell(node -e \"console.log\\(require\\('./node_modules/@mysten/sui/package.json'\\).version\\)\")",
+      "PowerShell(node -e \"import\\('@mysten/sui/client'\\).then\\(m => console.log\\(Object.keys\\(m\\).join\\(', '\\)\\)\\)\")",
+      "PowerShell(node -e \"console.log\\(JSON.stringify\\(require\\('./node_modules/@mysten/sui/package.json'\\).exports, null, 1\\)\\)\")",
+      "PowerShell(node -e \"const p=require\\('./node_modules/@mysten/deepbook-v3/package.json'\\); console.log\\('deepbook-v3', p.version\\); console.log\\(JSON.stringify\\(p.peerDependencies||p.dependencies\\)\\)\")",
+      "PowerShell(node -e \"import\\('@mysten/sui/jsonRpc'\\).then\\(m => console.log\\(Object.keys\\(m\\).filter\\(k=>k.toLowerCase\\(\\).includes\\('client'\\)\\).join\\(', '\\)\\)\\)\")",
+      "WebFetch(domain:docs.sui.io)",
+      "PowerShell(npx -y skills add mystenlabs/skills --all 2>&1)",
+      "PowerShell($rel = Invoke-RestMethod 'https://api.github.com/repos/MystenLabs/sui/releases/latest'; $asset = $rel.assets | Where-Object { $_.name -match 'windows-x86_64' } | Select-Object -First 1; $asset.name; $asset.browser_download_url)",
+      "PowerShell(New-Item -ItemType Directory -Force \"$env:USERPROFILE\\\\.sui\\\\bin\" | Out-Null; Invoke-WebRequest 'https://github.com/MystenLabs/sui/releases/download/testnet-v1.73.1/sui-testnet-v1.73.1-windows-x86_64.tgz' -OutFile \"$env:TEMP\\\\sui.tgz\"; tar -xzf \"$env:TEMP\\\\sui.tgz\" -C \"$env:USERPROFILE\\\\.sui\\\\bin\"; Get-ChildItem \"$env:USERPROFILE\\\\.sui\\\\bin\" | Select-Object Name)",
+      "PowerShell(& \"$env:USERPROFILE\\\\.sui\\\\bin\\\\sui.exe\" --version)"
+    ]
+  }
+}
