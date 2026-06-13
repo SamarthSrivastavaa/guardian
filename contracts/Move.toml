@@ -1,0 +1,11 @@
+[package]
+name = "guardian"
+edition = "2024.beta"
+version = "0.0.1"
+
+[dependencies]
+deepbook = { local = "../vendor/deepbookv3/packages/deepbook" }
+deepbook_margin = { local = "../vendor/deepbookv3/packages/deepbook_margin" }
+
+[addresses]
+guardian = "0x0"
