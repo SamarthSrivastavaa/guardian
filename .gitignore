@@ -3,3 +3,7 @@ vendor/
 .env
 *.log
 contracts/build/
+
+frontend/node_modules/
+frontend/dist/
+frontend/*.png

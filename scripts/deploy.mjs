@@ -16,7 +16,7 @@ const sui = join(homedir(), '.sui', 'bin', 'sui.exe');
 function publish() {
   const out = execFileSync(sui, [
     'client', 'publish', join(root, 'contracts'),
-    '--json', '--gas-budget', '500000000', '--skip-dependency-verification',
+    '--json', '--gas-budget', '500000000', '--skip-dependency-verification', '--allow-dirty',
   ], { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
   return JSON.parse(out);
 }
