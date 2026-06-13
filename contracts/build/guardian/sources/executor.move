@@ -72,20 +72,19 @@ public fun execute_protection<B, Q>(
     clock: &Clock,
     ctx: &mut TxContext,
 ) {
-    // ── Guards (revalidated on-chain; the keeper cannot fire this early) ──
-    assert!(policy.active() && policy.tier() == 2, ENotAutopilot);
-    assert!(policy.margin_manager_id() == manager.id(), EManagerMismatch);
     let now = clock.timestamp_ms();
-    assert!(now - policy.last_action_ms() >= policy.min_action_interval_ms(), ERateLimited);
-
     let rr_before = manager.risk_ratio(
         margin_registry, base_oracle, quote_oracle, pool, base_margin_pool, quote_margin_pool, clock,
     );
-    assert!(rr_before < policy.trigger_rr(), ETriggerNotMet);
+    // ── Guards (revalidated on-chain; the keeper cannot fire this early) ──
+    assert_execution_allowed(
+        policy.active(), policy.tier(), policy.margin_manager_id(), manager.id(),
+        now, policy.last_action_ms(), policy.min_action_interval_ms(), rr_before, policy.trigger_rr(),
+    );
 
     let has_base = manager.has_base_debt();
     let debt_before = current_debt(manager, base_margin_pool, quote_margin_pool, has_base, clock);
-    let orders_before = manager.account_open_orders(pool).size();
+    let orders_before = manager.account_open_orders(pool).length();
 
     // Step 1: cancel all open orders (frees locked balance into idle).
     pool_proxy::cancel_all_orders(margin_registry, manager, pool, clock, ctx);
@@ -100,10 +99,7 @@ public fun execute_protection<B, Q>(
     let debt_after = current_debt(manager, base_margin_pool, quote_margin_pool, has_base, clock);
 
     // ── REDUCE-ONLY INVARIANT ──
-    // Debt must never increase, and the action must have made progress (repaid debt or had
-    // orders to cancel). No code path in this module transfers manager collateral elsewhere.
-    assert!(debt_after <= debt_before, EReduceOnlyViolated);
-    assert!(debt_after < debt_before || orders_before > 0, ENoProgress);
+    assert_reduce_only(debt_before, debt_after, orders_before);
 
     policy.mark_action(now);
     pay_keeper_tip(policy, ctx);
@@ -184,6 +180,33 @@ public fun whiteknight_rescue<B, Q, DebtAsset>(
     });
 }
 
+// === Guards (pure; single source of truth, exercised directly by the S1/S5/S6 negative tests) ===
+/// All preconditions for `execute_protection`. Aborts identify the attack each guard blocks:
+/// ENotAutopilot (inactive/non-Tier-2), EManagerMismatch (S5 fake policy↔manager binding),
+/// ERateLimited (S1/S4 spam), ETriggerNotMet (S1 premature/needless action).
+public(package) fun assert_execution_allowed(
+    active: bool,
+    tier: u8,
+    policy_manager_id: ID,
+    manager_id: ID,
+    now_ms: u64,
+    last_action_ms: u64,
+    min_interval_ms: u64,
+    rr: u64,
+    trigger_rr: u64,
+) {
+    assert!(active && tier == 2, ENotAutopilot);
+    assert!(policy_manager_id == manager_id, EManagerMismatch);
+    assert!(now_ms - last_action_ms >= min_interval_ms, ERateLimited);
+    assert!(rr < trigger_rr, ETriggerNotMet);
+}
+
+/// The reduce-only postcondition (S6): debt never increases, and the action made progress.
+public(package) fun assert_reduce_only(debt_before: u64, debt_after: u64, orders_before: u64) {
+    assert!(debt_after <= debt_before, EReduceOnlyViolated);
+    assert!(debt_after < debt_before || orders_before > 0, ENoProgress);
+}
+
 // === Internal ===
 /// Current debt on the active side, robust to the fully-repaid case (margin_pool_id cleared).
 fun current_debt<B, Q>(
@@ -200,6 +223,7 @@ fun current_debt<B, Q>(
 }
 
 /// Pay the broadcasting keeper a fixed tip from the policy's segregated tip pot (never collateral).
+#[allow(lint(self_transfer))]
 fun pay_keeper_tip(policy: &mut ProtectionPolicy, ctx: &mut TxContext) {
     let tip = policy.take_tip(TIP_PER_ACTION_MIST);
     if (tip.value() == 0) { tip.destroy_zero(); return };

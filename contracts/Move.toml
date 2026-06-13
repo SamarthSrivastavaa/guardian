@@ -7,5 +7,11 @@ version = "0.0.1"
 deepbook = { local = "../vendor/deepbookv3/packages/deepbook" }
 deepbook_margin = { local = "../vendor/deepbookv3/packages/deepbook_margin" }
 
+# Root-level dep-replacement: deepbook_margin's own testnet replacement is ignored when it is a
+# dependency (only the root's applies), so we restate it. The testnet Pyth rev carries the
+# `new_price_info_object_for_test` helper that deepbook_margin's test_only code needs.
+[dep-replacements.testnet]
+pyth = { git = "https://github.com/pyth-network/pyth-crosschain.git", subdir = "target_chains/sui/contracts", rev = "sui-contract-testnet" }
+
 [addresses]
 guardian = "0x0"
