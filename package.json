@@ -4,7 +4,9 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "node --test test/risk.test.mjs test/keeper.test.mjs",
+    "read": "node scripts/guardian.mjs read",
+    "backtest": "node scripts/backtest.mjs"
   },
   "keywords": [],
   "author": "",
