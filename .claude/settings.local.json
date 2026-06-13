@@ -32,7 +32,9 @@
       "PowerShell(node scripts/guardian.mjs read 0x429b61f6cb386ba7fe5204c52ec7d3589c2bb4763fa46924958b5d3d8e36009e)",
       "PowerShell(node scripts/guardian.mjs read 0xa8a3c7e765ebd094540e43d608cd2d62cf85a30283d448e79b2365b6da18742c)",
       "Bash(curl -s -X POST https://faucet.testnet.sui.io/v2/gas -H 'Content-Type: application/json' -d '{\"FixedAmountRequest\":{\"recipient\":\"0x61116698c741c84b64c6be96d528554541d1fae0ed14bab9c604562c088adbaa\"}}')",
-      "PowerShell(git add -A)"
+      "PowerShell(git add -A)",
+      "PowerShell(node -e \"import\\('@mysten/sui/jsonRpc'\\).then\\(m=>{const c=new m.SuiJsonRpcClient\\({url:'https://fullnode.testnet.sui.io:443',network:'testnet'}\\); ['signAndExecuteTransaction','executeTransactionBlock','signAndExecuteTransactionBlock'].forEach\\(n=>console.log\\(n, typeof c[n]\\)\\); console.log\\('core.executeTransaction', typeof c.core?.executeTransaction\\);}\\)\")",
+      "Bash(curl -s -X POST https://faucet.testnet.sui.io/gas -H 'Content-Type: application/json' -d '{\"FixedAmountRequest\":{\"recipient\":\"0x61116698c741c84b64c6be96d528554541d1fae0ed14bab9c604562c088adbaa\"}}')"
     ]
   }
 }

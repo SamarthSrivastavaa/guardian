@@ -43,7 +43,24 @@ const [cmd, ...args] = process.argv.slice(2);
 if (cmd === 'read') {
   if (!args[0]) { console.error('usage: guardian read <managerId> [poolKey]'); process.exit(1); }
   await cmdRead(args[0], args[1]);
+} else if (cmd === 'setup') {
+  // create manager + deposit collateral + borrow (writes a position we control)
+  const { createManager, depositAndBorrowBase } = await import('../src/writer.mjs');
+  const id = await createManager('SUI_DBUSDC');
+  await depositAndBorrowBase(id, { depositSui: Number(args[0] ?? 0.5), borrowSui: Number(args[1] ?? 0.3) });
+  console.log(`\n  manager ready: ${id}\n`);
+} else if (cmd === 'repay') {
+  const { repayBase } = await import('../src/writer.mjs');
+  if (!args[0]) { console.error('usage: guardian repay <managerId> [amount]'); process.exit(1); }
+  await repayBase(args[0], { amount: args[1] ? Number(args[1]) : undefined });
+} else if (cmd === 'place-order') {
+  const { placeLimitAsk } = await import('../src/writer.mjs');
+  await placeLimitAsk(args[0], { price: Number(args[1]), quantity: Number(args[2]) });
+} else if (cmd === 'cancel') {
+  const { cancelAll } = await import('../src/writer.mjs');
+  if (!args[0]) { console.error('usage: guardian cancel <managerId>'); process.exit(1); }
+  await cancelAll(args[0]);
 } else {
-  console.error('commands: read <managerId> [poolKey]');
+  console.error('commands:\n  read <managerId> [poolKey]\n  setup [depositSui] [borrowSui]\n  repay <managerId> [amount]\n  place-order <managerId> <price> <qty>\n  cancel <managerId>');
   process.exit(1);
 }
