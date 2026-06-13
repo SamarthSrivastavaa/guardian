@@ -635,3 +635,21 @@ Sequencing: A→B→{C,D in parallel}→E→F→G. The schedule's only hard gate
 **Tooling:** Sui Agent Skills installed (`.agents/skills`, 21 skills, symlinked for Claude Code); Sui CLI v1.73.1 installed to `~/.sui/bin`; `@mysten/sui` v2.17 + `@mysten/deepbook-v3` v1.4.1 installed (note: SDK v2 uses `SuiJsonRpcClient` from `@mysten/sui/jsonRpc`); probe script at `scripts/probe-testnet.mjs`.
 
 *Phase A verification checklist closed. Next: Phase B — ground-truth CLI (read manager state, then live repay + cancel on a manager we control).*
+
+## Phase B — DeepBook read/write integration (2026-06-13) — reader DONE, write proof pending gas
+
+**Built & verified:** `guardian read <managerId>` (`src/reader.mjs`, `scripts/guardian.mjs`) prints fully real state — RR, collateral, debt, fresh Hermes-beta price, on-chain Pyth staleness, margin-pool utilization, and Guardian's own P_liq + distance-to-liq. Validated against hand-computation on three live testnet managers (price-independent base-borrow, quote-debt long, base-debt short). Write path coded (`src/writer.mjs`: create/deposit/borrow/repay/cancel) + `src/oracle.mjs` Pyth refresh.
+
+**Learned (now Known):**
+- **SDK is v2** (`@mysten/sui` 2.x): use `SuiJsonRpcClient` from `@mysten/sui/jsonRpc`; it exposes `.core.*` (simulate/execute) which `DeepBookClient` consumes. Passing `packageIds` to `DeepBookClient` takes a branch that **drops `marginPools`** — rely on `network:'testnet'` defaults instead.
+- **Pyth feeds on testnet are not continuously pushed** (~25 min stale when observed). Any SAFE-oracle margin call (deposit, borrow, `risk_ratio`, `liquidate`, our executor) aborts on `check_price_is_fresh` unless the PTB **refreshes the feeds first** via Hermes-beta (`https://hermes-beta.pyth.network`) + `SuiPythClient.updatePriceFeeds` (mutates the same shared `PriceInfoObject`s in place). **This is core to the keeper and demo, not a side quest.**
+- **`repay_*` and `cancel_orders` are oracle-FREE** (no Pyth params) — Guardian's two most important rescue primitives need no oracle refresh. `deposit`/`borrow` are freshness-checked.
+- **Monitoring design (decision):** Guardian reads oracle-FREE on-chain components (`calculate_assets`/`calculate_debts`) and prices the cross-rate with fresh Hermes data, computing RR/P_liq off-chain — exactly what a real keeper does. The protocol's exact on-chain RR (via `manager_state`) is reconciled at execution time (Pyth-refreshed). On-chain Pyth staleness is surfaced as an execution-readiness flag.
+
+**Still Unknown / residual:** live on-chain `repay` + `cancel` proof is blocked on **testnet gas** — the faucet HTTP endpoint (`faucet.testnet.sui.io/v2/gas`) hard IP-rate-limits this host. Write-path code is complete and validated by construction against the real signatures + SDK builders; a background faucet retry is running and the proofs execute automatically on funding. Dev wallet: `0x6111…dbaa`.
+
+## Phase C — Risk engine (2026-06-13) — DONE (gas-free, ran in parallel with B's write proof)
+
+**Built & verified:** `src/risk.mjs` implements §6 exactly — closed-form P_liq (both borrow directions), `riskRatio` matching the protocol's `assets_in_debt_unit/debt`, normal CDF (erf), EWMA vol (λ=0.94), kinked rate model, **interest-drift-adjusted breach probability** (debt drifts P_liq adversely over T), orderbook exit-cost VWAP walk, `quantityToRestore`, and the 5-component weighted **GRS** with SAFE/WATCH/PROTECT/EMERGENCY bands. 16 unit tests pass (`test/risk.test.mjs`), including real-testnet-state cases and GRS monotonicity. Backtest harness (`scripts/backtest.mjs`) pulls a real manager, **confirms the P_liq invariant `RR(P_liq) = rrLiq` exactly (1.10000000)**, seeds σ from 12 live-recorded SUI samples, and replays a crash showing the GRS ladder with the liquidation crossing landing on P_liq.
+
+**Learned (now Known):** the blueprint's §6.2 base-borrow form `(Qb·P+Qq)/(Db·P)` is algebraically identical to the protocol's `assets_in_debt_unit/debt` with debt-unit = base — both implemented and cross-checked. Real testnet RR_liq is **1.10** everywhere, so RR_safe=1.6 gives the sMargin ramp [1.10→1.60]. Interest-curve params (`u_kink`, slopes) still need to be read from each pool's on-chain `ProtocolConfig` (currently parameterized with standard defaults) — Phase D/E will wire the real values.
