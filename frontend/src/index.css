@@ -89,6 +89,73 @@ textarea, input { font-family: inherit; }
 .pill .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--safe); }
 .pill.accent { background: var(--accent); }
 
+/* ── landing ──────────────────────────────────────────────────────────────── */
+.lp { max-width: 1080px; margin: 0 auto; padding: 0 22px; }
+.hero { padding: 76px 0 52px; border-bottom: 2px solid var(--ink); }
+.lp-eyebrow { font-size: 11px; letter-spacing: 0.16em; text-transform: uppercase; color: var(--ink); font-weight: 800; display: inline-block; border: 2px solid var(--ink); padding: 5px 11px; margin-bottom: 26px; }
+.hero-title { font-size: clamp(40px, 6vw, 68px); font-weight: 900; line-height: 1.02; letter-spacing: -0.04em; max-width: 16ch; }
+.hero-sub { font-size: clamp(15px, 1.7vw, 19px); color: var(--text-2); line-height: 1.6; max-width: 60ch; margin-top: 24px; font-weight: 500; }
+.hero-cta { display: flex; gap: 12px; margin-top: 34px; flex-wrap: wrap; }
+.proof-strip { display: flex; flex-wrap: wrap; gap: 0; margin-top: 46px; border: 2px solid var(--ink); }
+.proof-item { flex: 1; min-width: 150px; padding: 16px 18px; border-right: 2px solid var(--ink); }
+.proof-item:last-child { border-right: none; }
+.proof-item b { display: block; font-family: var(--mono); font-size: 22px; font-weight: 800; letter-spacing: -0.02em; }
+.proof-item span { font-size: 11px; color: var(--muted); font-weight: 600; text-transform: uppercase; letter-spacing: 0.03em; }
+
+.lp-section { padding: 56px 0; border-bottom: 2px solid var(--ink); }
+.lp-section h2 { font-size: clamp(26px, 3.4vw, 38px); font-weight: 800; letter-spacing: -0.03em; max-width: 20ch; }
+.lp-section .lead { font-size: 16px; color: var(--text-2); line-height: 1.6; max-width: 64ch; margin-top: 14px; font-weight: 500; }
+
+.flow { display: grid; grid-template-columns: repeat(4, 1fr); gap: 0; margin-top: 32px; border: 2px solid var(--ink); }
+.flow-step { padding: 20px; border-right: 2px solid var(--ink); }
+.flow-step:last-child { border-right: none; background: var(--accent); }
+.flow-step .n { font-family: var(--mono); font-size: 12px; font-weight: 800; color: var(--muted); }
+.flow-step h3 { font-size: 16px; font-weight: 800; margin: 8px 0 7px; letter-spacing: -0.02em; }
+.flow-step p { font-size: 12.5px; color: var(--text-2); line-height: 1.5; }
+
+.feat-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-top: 32px; }
+.feat { border: 2px solid var(--ink); box-shadow: var(--shadow-sm); padding: 20px; }
+.feat .ico { width: 34px; height: 34px; border: 2px solid var(--ink); display: grid; place-items: center; font-size: 16px; font-weight: 800; margin-bottom: 14px; }
+.feat h3 { font-size: 15.5px; font-weight: 800; letter-spacing: -0.02em; }
+.feat p { font-size: 13px; color: var(--text-2); line-height: 1.55; margin-top: 7px; }
+
+.r1 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-top: 30px; }
+.r1-card { border-left: 4px solid var(--danger); padding: 4px 0 4px 16px; }
+.r1-card b { font-weight: 800; font-size: 15px; }
+.r1-card p { font-size: 13px; color: var(--text-2); line-height: 1.55; margin-top: 6px; }
+
+.lp-foot { padding: 48px 0 72px; text-align: center; }
+.lp-foot h2 { font-size: clamp(28px, 4vw, 44px); font-weight: 900; letter-spacing: -0.03em; }
+
+/* ── docs ─────────────────────────────────────────────────────────────────── */
+.docs-layout { display: grid; grid-template-columns: 240px 1fr; gap: 40px; max-width: 1180px; margin: 0 auto; padding: 28px 22px; align-items: start; }
+.docs-toc { position: sticky; top: 84px; border-left: 2px solid var(--ink); padding-left: 16px; }
+.docs-toc a { display: block; font-size: 12.5px; color: var(--muted); font-weight: 600; padding: 5px 0; text-decoration: none; transition: color 0.12s; }
+.docs-toc a:hover { color: var(--ink); }
+.docs-toc a.sub { padding-left: 14px; font-size: 12px; font-weight: 500; }
+.docs-toc .grp { font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.1em; font-weight: 800; color: var(--ink); margin: 16px 0 4px; }
+.docs-toc .grp:first-child { margin-top: 0; }
+
+.prose { max-width: 760px; }
+.prose h1 { font-size: 38px; font-weight: 900; letter-spacing: -0.035em; }
+.prose .sub { font-size: 16px; color: var(--text-2); margin-top: 10px; line-height: 1.6; }
+.prose section { padding-top: 40px; scroll-margin-top: 80px; }
+.prose h2 { font-size: 25px; font-weight: 800; letter-spacing: -0.025em; padding-bottom: 8px; border-bottom: 2px solid var(--ink); }
+.prose h3 { font-size: 17px; font-weight: 800; margin-top: 26px; letter-spacing: -0.02em; }
+.prose p { font-size: 14.5px; line-height: 1.7; color: var(--text); margin-top: 14px; }
+.prose ul { margin: 12px 0 0 0; padding-left: 0; list-style: none; }
+.prose li { font-size: 14px; line-height: 1.65; color: var(--text); padding: 5px 0 5px 20px; position: relative; }
+.prose li::before { content: '—'; position: absolute; left: 0; color: var(--muted); font-weight: 700; }
+.prose code { font-family: var(--mono); font-size: 12.5px; background: var(--panel-3); padding: 1.5px 5px; border: 1px solid var(--border); }
+.prose pre { background: var(--ink); color: #e8e8e6; padding: 16px 18px; margin-top: 16px; overflow-x: auto; border-radius: 3px; }
+.prose pre code { background: none; border: none; color: inherit; font-size: 12.5px; line-height: 1.7; }
+.prose table { width: 100%; border-collapse: collapse; margin-top: 16px; font-size: 13px; }
+.prose th { background: var(--ink); color: #fff; text-align: left; padding: 9px 11px; font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; }
+.prose td { padding: 9px 11px; border-bottom: 1.5px solid var(--panel-3); vertical-align: top; line-height: 1.5; }
+.prose .callout { border: 2px solid var(--ink); box-shadow: var(--shadow-sm); padding: 14px 16px; margin-top: 18px; font-size: 13.5px; line-height: 1.6; background: var(--accent); }
+.prose .note { border-left: 4px solid var(--safe); background: var(--safe-dim); padding: 12px 15px; margin-top: 16px; font-size: 13px; line-height: 1.6; }
+.formula { font-family: var(--mono); font-size: 13px; background: var(--panel-2); border: 1.5px solid var(--ink); padding: 12px 15px; margin-top: 14px; line-height: 1.7; white-space: pre-wrap; }
+
 .bs-row { display: grid; grid-template-columns: 1.3fr 0.5fr 2fr; gap: 16px; padding: 13px 18px; border-bottom: 1.5px solid var(--panel-3); align-items: center; }
 .bs-row:last-child { border-bottom: none; }
 .bs-head { background: var(--ink); color: #fff; font-size: 11px; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase; }
