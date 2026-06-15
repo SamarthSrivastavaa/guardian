@@ -3,7 +3,13 @@
 /// Guardian protection policies. A `ProtectionPolicy` is an owned object that authorizes
 /// Guardian's executor to deleverage exactly one `MarginManager` the caller owns, under
 /// on-chain trigger/rate-limit guards. Creating a policy binds it to the manager's owner and
-/// id; all risk thresholds use the protocol's 9-decimal fixed-point convention (not bps).
+/// id; all risk thresholds use the protocol's 9-decimal fixed-point convention.
+///
+/// The policy stores only what the executor actually enforces on-chain: the `trigger_rr` gate,
+/// the `target_rr` the ladder aims for, the rate limit, and the segregated keeper tip. (The
+/// white-knight fires whenever the protocol's own `can_liquidate` holds, and the executor's
+/// implemented ladder is cancel + repay-from-idle, so per-policy white-knight / slippage / tranche
+/// thresholds would be dead params — they are intentionally not stored.)
 module guardian::policy;
 
 use deepbook_margin::margin_manager::MarginManager;
@@ -14,16 +20,12 @@ use sui::event;
 // === Errors ===
 const ENotManagerOwner: u64 = 1;
 const EInvalidTier: u64 = 2;
-/// Thresholds must satisfy whiteknight < trigger and target > trigger, all above 1.0.
+/// Thresholds must satisfy 1.0 < trigger_rr < target_rr.
 const EInvalidThresholds: u64 = 3;
-const EInvalidSlippage: u64 = 4;
-const EInvalidTranche: u64 = 5;
-const ENotPolicyOwner: u64 = 6;
+const ENotPolicyOwner: u64 = 4;
 
 // === Constants (upgrade-required safety envelope) ===
 const FLOAT_SCALING: u64 = 1_000_000_000; // protocol RR fixed-point (1.0)
-const MAX_SLIPPAGE_BPS: u64 = 200; // hard ceiling: a policy can never authorize >2% slippage
-const MAX_TRANCHE_BPS: u64 = 10_000; // 100%
 const TIER_AUTOPILOT: u8 = 2;
 
 // === Structs ===
@@ -35,10 +37,7 @@ public struct ProtectionPolicy has key, store {
     deepbook_pool_id: ID,
     tier: u8, // 0 alert, 1 copilot, 2 autopilot
     trigger_rr: u64, // act when RR < trigger_rr
-    target_rr: u64, // ladder restores RR up to target_rr
-    whiteknight_rr: u64, // self-liquidate below this (above pool liq threshold)
-    max_slippage_bps: u64,
-    tranche_bps: u64,
+    target_rr: u64, // ladder aims to restore RR toward this
     min_action_interval_ms: u64, // rate limit between executor actions
     last_action_ms: u64,
     keeper_tip: Balance<SUI>, // user-funded, segregated from collateral (S4)
@@ -53,29 +52,25 @@ public struct PolicyCreated has copy, drop {
     tier: u8,
     trigger_rr: u64,
     target_rr: u64,
-    whiteknight_rr: u64,
 }
 
-public struct PolicyUpdated has copy, drop { policy_id: ID, trigger_rr: u64, target_rr: u64, whiteknight_rr: u64 }
+public struct PolicyUpdated has copy, drop { policy_id: ID, trigger_rr: u64, target_rr: u64 }
 public struct PolicyRevoked has copy, drop { policy_id: ID, owner: address }
 
 // === Public Functions ===
-/// Create a policy bound to a manager the caller owns. Validates the threshold ladder and the
-/// safety envelope (S5 binding, S7 bounds) before anything is shared.
+/// Create a policy bound to a manager the caller owns. Validates the threshold ladder (S5 binding,
+/// S7 bounds) before anything is shared.
 public fun create<B, Q>(
     manager: &MarginManager<B, Q>,
     tier: u8,
     trigger_rr: u64,
     target_rr: u64,
-    whiteknight_rr: u64,
-    max_slippage_bps: u64,
-    tranche_bps: u64,
     min_action_interval_ms: u64,
     tip: Balance<SUI>,
     ctx: &mut TxContext,
 ): ProtectionPolicy {
     assert!(ctx.sender() == manager.owner(), ENotManagerOwner);
-    assert_thresholds(tier, trigger_rr, target_rr, whiteknight_rr, max_slippage_bps, tranche_bps);
+    assert_thresholds(tier, trigger_rr, target_rr);
 
     let policy = ProtectionPolicy {
         id: object::new(ctx),
@@ -85,9 +80,6 @@ public fun create<B, Q>(
         tier,
         trigger_rr,
         target_rr,
-        whiteknight_rr,
-        max_slippage_bps,
-        tranche_bps,
         min_action_interval_ms,
         last_action_ms: 0,
         keeper_tip: tip,
@@ -100,29 +92,22 @@ public fun create<B, Q>(
         tier,
         trigger_rr,
         target_rr,
-        whiteknight_rr,
     });
     policy
 }
 
-/// Owner-only retune of thresholds. Revalidates the full ladder + envelope.
+/// Owner-only retune of thresholds. Revalidates the ladder.
 public fun update(
     self: &mut ProtectionPolicy,
     trigger_rr: u64,
     target_rr: u64,
-    whiteknight_rr: u64,
-    max_slippage_bps: u64,
-    tranche_bps: u64,
     ctx: &TxContext,
 ) {
     assert!(ctx.sender() == self.owner, ENotPolicyOwner);
-    assert_thresholds(self.tier, trigger_rr, target_rr, whiteknight_rr, max_slippage_bps, tranche_bps);
+    assert_thresholds(self.tier, trigger_rr, target_rr);
     self.trigger_rr = trigger_rr;
     self.target_rr = target_rr;
-    self.whiteknight_rr = whiteknight_rr;
-    self.max_slippage_bps = max_slippage_bps;
-    self.tranche_bps = tranche_bps;
-    event::emit(PolicyUpdated { policy_id: self.id.to_inner(), trigger_rr, target_rr, whiteknight_rr });
+    event::emit(PolicyUpdated { policy_id: self.id.to_inner(), trigger_rr, target_rr });
 }
 
 /// Owner-only, instant, unconditional revoke. Returns the unused keeper tip to the owner.
@@ -158,32 +143,18 @@ public fun deepbook_pool_id(self: &ProtectionPolicy): ID { self.deepbook_pool_id
 public fun tier(self: &ProtectionPolicy): u8 { self.tier }
 public fun trigger_rr(self: &ProtectionPolicy): u64 { self.trigger_rr }
 public fun target_rr(self: &ProtectionPolicy): u64 { self.target_rr }
-public fun whiteknight_rr(self: &ProtectionPolicy): u64 { self.whiteknight_rr }
-public fun max_slippage_bps(self: &ProtectionPolicy): u64 { self.max_slippage_bps }
-public fun tranche_bps(self: &ProtectionPolicy): u64 { self.tranche_bps }
 public fun min_action_interval_ms(self: &ProtectionPolicy): u64 { self.min_action_interval_ms }
 public fun last_action_ms(self: &ProtectionPolicy): u64 { self.last_action_ms }
 public fun active(self: &ProtectionPolicy): bool { self.active }
 public fun tip_balance(self: &ProtectionPolicy): u64 { self.keeper_tip.value() }
 
 // === Internal ===
-/// The threshold ladder + safety envelope. Public(package) so executor/tests share one path.
-public(package) fun assert_thresholds(
-    tier: u8,
-    trigger_rr: u64,
-    target_rr: u64,
-    whiteknight_rr: u64,
-    max_slippage_bps: u64,
-    tranche_bps: u64,
-) {
+/// The threshold ladder: 1.0 < trigger_rr < target_rr, and tier in range. Public(package) so
+/// executor/tests share one path.
+public(package) fun assert_thresholds(tier: u8, trigger_rr: u64, target_rr: u64) {
     assert!(tier <= TIER_AUTOPILOT, EInvalidTier);
-    // Ladder: 1.0 < whiteknight < trigger < target. wk sits just above the pool liq threshold;
-    // we act (trigger) before the position is critical and aim the ladder above trigger (target).
-    assert!(whiteknight_rr > FLOAT_SCALING, EInvalidThresholds);
-    assert!(whiteknight_rr < trigger_rr, EInvalidThresholds);
+    assert!(trigger_rr > FLOAT_SCALING, EInvalidThresholds);
     assert!(target_rr > trigger_rr, EInvalidThresholds);
-    assert!(max_slippage_bps > 0 && max_slippage_bps <= MAX_SLIPPAGE_BPS, EInvalidSlippage);
-    assert!(tranche_bps > 0 && tranche_bps <= MAX_TRANCHE_BPS, EInvalidTranche);
 }
 
 #[test_only]
