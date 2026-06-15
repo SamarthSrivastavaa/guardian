@@ -9,10 +9,12 @@ module guardian::guards_test;
 
 use guardian::policy;
 use guardian::executor;
+use deepbook::{constants, math};
 
 const FLOAT: u64 = 1_000_000_000;
 fun id_a(): ID { object::id_from_address(@0xA) }
 fun id_b(): ID { object::id_from_address(@0xB) }
+fun approx(a: u64, b: u64, tol: u64): bool { if (a > b) a - b <= tol else b - a <= tol }
 
 // Valid baseline ladder: wk 1.13 < trigger 1.25 < target 1.40, slippage 50bps, tranche 25%.
 fun ok_thresholds() { policy::assert_thresholds(2, 1_250_000_000, 1_400_000_000, 1_130_000_000, 50, 2_500); }
@@ -88,3 +90,36 @@ fun s6_debt_increase_aborts() { executor::assert_reduce_only(1000, 1200, 0); }
 
 #[test, expected_failure(abort_code = executor::ENoProgress)]
 fun s6_no_progress_aborts() { executor::assert_reduce_only(1000, 1000, 0); }
+
+// ── C5: white-knight float preservation (the economic invariant) ─────────────
+// Each rescue: vault pays outlay = repay·(1+pool_reward) and receives collateral worth
+// repay·(1+user_reward+pool_reward). owner_reward_fraction forwards the user-reward slice to the
+// owner; the vault MUST retain exactly its outlay so the float is preserved across N rescues.
+#[test]
+fun whiteknight_float_preserved_across_n_rescues() {
+    let one = constants::float_scaling();
+    let user_reward = 20_000_000; // 0.02
+    let pool_reward = 30_000_000; // 0.03
+    let frac = executor::owner_reward_fraction(user_reward, pool_reward);
+
+    let start_float = 1_000_000_000_000; // 1,000 units of the debt asset (6-dec scaled)
+    let mut vault = start_float;
+    let mut i = 0;
+    while (i < 10) {
+        let repay = 40_000_000 + i * 9_000_000; // vary the rescue size each iteration
+        let outlay = math::mul(repay, one + pool_reward); // vault pays repay·(1+pool_reward)
+        let collateral = math::mul(repay, one + user_reward + pool_reward); // worth repay·1.05
+        let owner_reward = math::mul(collateral, frac); // user-reward slice → owner
+        let vault_retain = collateral - owner_reward; // rest → vault
+
+        // Owner receives exactly the user reward (repay·user_reward).
+        assert!(approx(owner_reward, math::mul(repay, user_reward), 2), 100);
+        // Vault is made whole: what it retains equals what it paid out.
+        assert!(approx(vault_retain, outlay, 2), 101);
+
+        vault = vault - outlay + vault_retain;
+        i = i + 1;
+    };
+    // After 10 consecutive rescues the float is unchanged (no drain).
+    assert!(approx(vault, start_float, 20), 102);
+}

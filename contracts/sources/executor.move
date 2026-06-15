@@ -9,11 +9,14 @@
 /// path that sends a manager's collateral to any address other than the manager owner.
 ///
 /// `whiteknight_rescue` self-liquidates a position the instant the protocol allows it
-/// (`can_liquidate`), forwarding 100% of the seized collateral to the owner so the liquidation
-/// reward is captured for the user rather than a MEV bot.
+/// (`can_liquidate`). The vault funds the liquidation (paying `repay·(1+pool_reward)`) and recovers
+/// that outlay from the seized collateral; only the user-reward portion (`repay·user_reward`, ~2%)
+/// is forwarded to the owner — the reward an MEV bot would have kept, captured for the user instead.
+/// The vault is made whole each rescue, so the white-knight float is preserved (see test
+/// `whiteknight_float_preserved_across_n_rescues`).
 module guardian::executor;
 
-use deepbook::pool::Pool;
+use deepbook::{constants, math, pool::Pool};
 use deepbook_margin::margin_manager::MarginManager;
 use deepbook_margin::margin_pool::MarginPool;
 use deepbook_margin::margin_registry::MarginRegistry;
@@ -53,8 +56,8 @@ public struct WhiteKnightRescue has copy, drop {
     owner: address,
     debt_before: u64,
     debt_after: u64,
-    base_returned: u64,
-    quote_returned: u64,
+    reward_to_owner_base: u64, // user-reward portion of seized collateral, forwarded to the owner
+    reward_to_owner_quote: u64,
     keeper: address,
 }
 
@@ -143,18 +146,29 @@ public fun whiteknight_rescue<B, Q, DebtAsset>(
     let debt_before = if (has_base) bd else qd;
 
     let repay_coin = vault.take_float<DebtAsset>(repay_amount).into_coin(ctx);
-    // `liquidate` cancels orders, asserts can_liquidate (the real gate), repays debt, and pays the
-    // caller collateral worth repay·(1 + user_reward + pool_reward).
-    let (base_coin, quote_coin, change) = manager.liquidate<B, Q, DebtAsset>(
+    // `liquidate` cancels orders, asserts can_liquidate (the real gate), repays debt, pays the
+    // caller collateral worth repay·(1 + user_reward + pool_reward), and returns the unused input.
+    let (mut base_coin, mut quote_coin, change) = manager.liquidate<B, Q, DebtAsset>(
         margin_registry, base_oracle, quote_oracle, margin_pool, pool, repay_coin, clock, ctx,
     );
 
-    let base_returned = base_coin.value();
-    let quote_returned = quote_coin.value();
+    // Split the seized collateral: the user-reward fraction goes to the owner; the rest (= the
+    // vault's `repay·(1+pool_reward)` outlay) plus the unused input returns to the vault, keeping
+    // the white-knight float whole across rescues.
+    let frac = owner_reward_fraction(
+        margin_registry.user_liquidation_reward(pool.id()),
+        margin_registry.pool_liquidation_reward(pool.id()),
+    );
     let owner = policy.owner();
-    // Reward capture: 100% of seized collateral goes to the user, not a MEV bot.
-    transfer::public_transfer(base_coin, owner);
-    transfer::public_transfer(quote_coin, owner);
+    let reward_to_owner_base = math::mul(base_coin.value(), frac);
+    let reward_to_owner_quote = math::mul(quote_coin.value(), frac);
+    let reward_base = base_coin.split(reward_to_owner_base, ctx);
+    let reward_quote = quote_coin.split(reward_to_owner_quote, ctx);
+    transfer::public_transfer(reward_base, owner);
+    transfer::public_transfer(reward_quote, owner);
+    // Vault recovers its outlay (the remaining collateral) + the unused repay input.
+    vault.return_float(base_coin.into_balance());
+    vault.return_float(quote_coin.into_balance());
     vault.return_float(change.into_balance());
 
     let shares_after = if (has_base) manager.borrowed_base_shares() else manager.borrowed_quote_shares();
@@ -166,7 +180,7 @@ public fun whiteknight_rescue<B, Q, DebtAsset>(
 
     policy.mark_action(clock.timestamp_ms());
     pay_keeper_tip(policy, ctx);
-    guardian_registry.record_rescue(base_returned + quote_returned);
+    guardian_registry.record_rescue(reward_to_owner_base + reward_to_owner_quote);
 
     event::emit(WhiteKnightRescue {
         policy_id: object::id(policy),
@@ -174,8 +188,8 @@ public fun whiteknight_rescue<B, Q, DebtAsset>(
         owner,
         debt_before,
         debt_after,
-        base_returned,
-        quote_returned,
+        reward_to_owner_base,
+        reward_to_owner_quote,
         keeper: ctx.sender(),
     });
 }
@@ -205,6 +219,15 @@ public(package) fun assert_execution_allowed(
 public(package) fun assert_reduce_only(debt_before: u64, debt_after: u64, orders_before: u64) {
     assert!(debt_after <= debt_before, EReduceOnlyViolated);
     assert!(debt_after < debt_before || orders_before > 0, ENoProgress);
+}
+
+/// Fraction (9-dec) of seized white-knight collateral that belongs to the owner. The liquidator
+/// receives collateral worth `repay·(1+user_reward+pool_reward)` for an outlay of
+/// `repay·(1+pool_reward)`; the user-reward slice = `user_reward/(1+user_reward+pool_reward)` of
+/// the collateral, so retaining the rest exactly restores the vault's outlay. Single source of
+/// truth for the float-preservation invariant.
+public(package) fun owner_reward_fraction(user_reward: u64, pool_reward: u64): u64 {
+    math::div(user_reward, constants::float_scaling() + user_reward + pool_reward)
 }
 
 // === Internal ===
