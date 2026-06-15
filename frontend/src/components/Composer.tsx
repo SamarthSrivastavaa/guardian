@@ -43,7 +43,7 @@ export function Composer() {
   return (
     <div className="page" style={{ maxWidth: 1060, margin: '0 auto' }}>
       <div className="card">
-        <div className="eyebrow" style={{ marginBottom: 10 }}>AI policy composer · natural language → on-chain policy</div>
+        <div className="eyebrow" style={{ marginBottom: 10 }}>Structured policy composer · natural language → on-chain policy</div>
         <textarea className="field" rows={3} placeholder="Describe how Guardian should protect this position…"
           value={text} onChange={(e) => setText(e.target.value)} />
         <div className="row" style={{ marginTop: 12, alignItems: 'center', justifyContent: 'space-between' }}>
@@ -57,8 +57,9 @@ export function Composer() {
       </div>
 
       <div style={{ fontSize: 12, color: 'var(--faint)', margin: '14px 4px', lineHeight: 1.6 }}>
-        The model only proposes <b style={{ color: 'var(--muted)' }}>parameters you confirm</b> — never actions. Every proposal is re-validated against the
-        same on-chain safety envelope the contract enforces, so a bad or injected prompt can’t produce an unsafe policy.
+        Deterministic — your words map to <b style={{ color: 'var(--muted)' }}>parameters you confirm</b>, never actions, with no model in the loop. Every
+        proposal is re-validated against the same on-chain safety envelope the contract enforces (<code>assert_thresholds</code>), so a malformed or
+        injected request can’t produce an unsafe policy.
       </div>
 
       {result && (

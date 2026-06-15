@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { POOLS, netApy, type Pool } from '../lib/lenders';
+import { DemoBanner } from './DemoBanner';
 
 const pct = (x: number) => `${(x * 100).toFixed(2)}%`;
 const pct1 = (x: number) => `${(x * 100).toFixed(1)}%`;
@@ -13,6 +14,7 @@ export function Lenders() {
 
   return (
     <div className="page">
+      <DemoBanner text="Sample pools. Pool IDs and utilization are real testnet values; APYs and rescue-rate projections are modeled, not yet measured from live keeper activity." />
       <div style={{ fontSize: 13.5, color: 'var(--muted)', margin: '0 2px 18px', lineHeight: 1.6, maxWidth: 800 }}>
         Lenders supply the margin pools and earn yield — but lose it to <b style={{ color: 'var(--ink)' }}>bad debt</b> when borrower
         positions liquidate late in fast markets. Guardian deleverages those borrowers <i>before</i> liquidation, so less bad debt reaches

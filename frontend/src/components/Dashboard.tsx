@@ -1,4 +1,5 @@
 import { Gauge } from './Gauge';
+import { DemoBanner } from './DemoBanner';
 import { POSITIONS } from '../lib/positions';
 import { guardianRiskScore, liquidationPrice, riskRatio, bandColor, explainEvent } from '../lib/guardian';
 
@@ -23,12 +24,13 @@ export function Dashboard() {
 
   return (
     <div className="page">
+      <DemoBanner text="Sample positions — every number here is computed by Guardian's real risk engine; live chain reads ship after audit." />
       {/* stats strip */}
       <div className="grid" style={{ gridTemplateColumns: 'repeat(5, 1fr)', marginBottom: 16 }}>
         <Stat label="Protected" value={String(POSITIONS.length)} suffix="managers" />
         <Stat label="Portfolio risk" value={String(Math.round(worst.r.grs))} suffix={worst.r.band} accent={bandColor[worst.r.band]} />
         <Stat label="Lowest RR" value={f(Math.min(...rows.map((x) => x.rr)), 3)} mono />
-        <Stat label="Value protected" value="$2,184" mono />
+        <Stat label="Worst 24h breach P" value={`${(Math.max(...rows.map((x) => x.r.pBreach24h)) * 100).toFixed(1)}%`} mono />
         <Stat label="Liq. threshold" value="1.10" mono suffix="pool" />
       </div>
 

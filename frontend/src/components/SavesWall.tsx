@@ -1,4 +1,5 @@
 import { SAVES, SAVES_STATS, type Save } from '../lib/saves';
+import { DemoBanner } from './DemoBanner';
 
 const usd = (n: number) => `$${Math.round(n).toLocaleString()}`;
 
@@ -13,6 +14,7 @@ function shareUrl(s: Save) {
 export function SavesWall() {
   return (
     <div className="page">
+      <DemoBanner text="Sample feed. The first two cards carry real Walrus-testnet receipts and real testnet transactions; the rest illustrate the format the keeper will publish automatically." />
       <div className="grid" style={{ gridTemplateColumns: 'repeat(4, 1fr)', marginBottom: 16 }}>
         <Stat label="Total saves" value={String(SAVES_STATS.totalSaves)} />
         <Stat label="Value protected" value={usd(SAVES_STATS.valueProtected)} accent="var(--safe)" />
@@ -20,10 +22,11 @@ export function SavesWall() {
         <Stat label="Rewards returned to users" value={usd(SAVES_STATS.rewardsReturned)} accent="var(--accent)" ink />
       </div>
 
-      <div style={{ fontSize: 12.5, color: 'var(--muted)', margin: '0 2px 16px', lineHeight: 1.6, maxWidth: 760 }}>
-        Every rescue Guardian performs is published as a tamper-evident receipt on <b style={{ color: 'var(--ink)' }}>Walrus</b> — the
-        structured event the explainer narrates, with the on-chain keeper tx. Anyone can verify a non-custodial protection actually fired.
-        Wallets are prefix-anonymized.
+      <div style={{ fontSize: 12.5, color: 'var(--muted)', margin: '0 2px 16px', lineHeight: 1.6, maxWidth: 780 }}>
+        Each rescue is designed to publish a tamper-evident receipt on <b style={{ color: 'var(--ink)' }}>Walrus</b> — the structured
+        event the explainer narrates, plus the on-chain tx — so anyone can verify a non-custodial protection fired. The receipt format
+        and anchoring are <b style={{ color: 'var(--ink)' }}>live and verifiable today</b> (click a Walrus receipt below); automatic
+        anchoring on every rescue ships with the keeper loop. Wallets are prefix-anonymized.
       </div>
 
       <div className="grid" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(420px, 1fr))' }}>
@@ -60,7 +63,7 @@ export function SavesWall() {
               {s.walrus
                 ? <a className="btn btn-ghost" style={{ fontSize: 12, padding: '8px 12px' }} href={s.walrus} target="_blank" rel="noreferrer">Walrus receipt ↗</a>
                 : <span className="btn btn-ghost" style={{ fontSize: 12, padding: '8px 12px', opacity: 0.5, boxShadow: 'none' }}>receipt: localnet</span>}
-              {s.keeperTx && <a className="btn btn-ghost" style={{ fontSize: 12, padding: '8px 12px' }} href={`https://suiscan.xyz/testnet/tx/${s.keeperTx}`} target="_blank" rel="noreferrer">keeper tx ↗</a>}
+              {s.keeperTx && <a className="btn btn-ghost" style={{ fontSize: 12, padding: '8px 12px' }} href={`https://suiscan.xyz/testnet/tx/${s.keeperTx}`} target="_blank" rel="noreferrer" title="Real testnet DeepBook Margin transaction (repay/cancel) — the same op a rescue performs">testnet tx ↗</a>}
               <a className="btn btn-ink" style={{ fontSize: 12, padding: '8px 12px', marginLeft: 'auto' }} href={shareUrl(s)} target="_blank" rel="noreferrer">Share to 𝕏</a>
             </div>
           </div>

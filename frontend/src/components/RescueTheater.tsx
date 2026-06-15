@@ -32,6 +32,9 @@ export function RescueTheater() {
 
   return (
     <div className="page" style={{ maxWidth: 1240 }}>
+      <div className="sim-caption">
+        Live simulation of Guardian's risk engine, executor logic, and white-knight flow, run against a scripted price path.
+      </div>
       <div className="row" style={{ justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: 16 }}>
         <div>
           <div className="eyebrow">Rescue Theater · live risk engine · autopsy replay</div>
