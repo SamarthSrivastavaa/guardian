@@ -81,25 +81,23 @@ export function guardianRiskScore(s: Snapshot) {
 export const ENVELOPE = { FLOAT: 1.0, MAX_SLIPPAGE_BPS: 200, MAX_TRANCHE_BPS: 10_000, MAX_TIER: 2 };
 
 export interface PolicyParams {
-  tier: number; triggerRr: number; targetRr: number; whiteknightRr: number;
-  maxSlippageBps: number; trancheBps: number; minActionIntervalMs: number;
+  tier: number; triggerRr: number; targetRr: number; minActionIntervalMs: number;
 }
 
+// Mirrors guardian::policy::assert_thresholds exactly: 1.0 < triggerRr < targetRr, tier in range.
+// (white-knight / slippage / tranche thresholds are not stored on-chain — see policy.move.)
 export function validatePolicyParams(p: PolicyParams) {
   const errors: string[] = [];
   if (!(Number.isInteger(p.tier) && p.tier >= 0 && p.tier <= ENVELOPE.MAX_TIER)) errors.push(`tier must be 0..${ENVELOPE.MAX_TIER}`);
-  if (!(p.whiteknightRr > ENVELOPE.FLOAT)) errors.push('whiteknightRr must be > 1.0');
-  if (!(p.whiteknightRr < p.triggerRr)) errors.push('whiteknightRr must be < triggerRr');
+  if (!(p.triggerRr > ENVELOPE.FLOAT)) errors.push('triggerRr must be > 1.0');
   if (!(p.targetRr > p.triggerRr)) errors.push('targetRr must be > triggerRr');
-  if (!(p.maxSlippageBps > 0 && p.maxSlippageBps <= ENVELOPE.MAX_SLIPPAGE_BPS)) errors.push(`maxSlippageBps must be 1..${ENVELOPE.MAX_SLIPPAGE_BPS}`);
-  if (!(p.trancheBps > 0 && p.trancheBps <= ENVELOPE.MAX_TRANCHE_BPS)) errors.push(`trancheBps must be 1..${ENVELOPE.MAX_TRANCHE_BPS}`);
   return { valid: errors.length === 0, errors };
 }
 
 const PRESETS: Record<string, Omit<PolicyParams, 'tier' | 'minActionIntervalMs'>> = {
-  conservative: { triggerRr: 1.40, targetRr: 1.60, whiteknightRr: 1.13, maxSlippageBps: 30, trancheBps: 2_000 },
-  balanced: { triggerRr: 1.30, targetRr: 1.45, whiteknightRr: 1.13, maxSlippageBps: 50, trancheBps: 2_500 },
-  aggressive: { triggerRr: 1.20, targetRr: 1.30, whiteknightRr: 1.12, maxSlippageBps: 100, trancheBps: 4_000 },
+  conservative: { triggerRr: 1.40, targetRr: 1.60 },
+  balanced: { triggerRr: 1.30, targetRr: 1.45 },
+  aggressive: { triggerRr: 1.20, targetRr: 1.30 },
 };
 
 export function composePolicyFromIntent(text: string) {

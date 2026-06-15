@@ -78,9 +78,8 @@ export function Composer() {
             <span className="card-title">What Guardian may do</span>
             <ul style={{ listStyle: 'none', marginTop: 14, display: 'flex', flexDirection: 'column', gap: 12 }}>
               <Permission ok text={`Act when risk ratio falls below ${result.params.triggerRr.toFixed(2)}`} />
-              <Permission ok text={`Cancel orders and repay debt to restore RR toward ${result.params.targetRr.toFixed(2)}`} />
-              <Permission ok text={`Sell in reduce-only tranches, capped at ${(result.params.maxSlippageBps / 100).toFixed(2)}% slippage`} />
-              <Permission ok text={`Self-liquidate below ${result.params.whiteknightRr.toFixed(2)} — reward returned to you`} />
+              <Permission ok text={`Cancel open orders and repay debt from idle balance to restore RR toward ${result.params.targetRr.toFixed(2)}`} />
+              <Permission ok text="Self-liquidate the instant the protocol allows it — reward returned to you, not a bot" />
               <Permission text="Move any asset to an address that isn’t yours" />
               <Permission text="Increase your debt or open new leverage" />
             </ul>
@@ -106,9 +105,6 @@ function ParamRows({ p }: { p: PolicyParams }) {
   const rows: [string, string][] = [
     ['Trigger RR', p.triggerRr.toFixed(2)],
     ['Target RR', p.targetRr.toFixed(2)],
-    ['White-knight RR', p.whiteknightRr.toFixed(2)],
-    ['Max slippage', `${(p.maxSlippageBps / 100).toFixed(2)}%`],
-    ['Tranche size', `${(p.trancheBps / 100).toFixed(0)}%`],
     ['Min action interval', `${p.minActionIntervalMs / 1000}s`],
   ];
   return <div>{rows.map(([k, v]) => <div className="kv" key={k}><span>{k}</span><b className="num">{v}</b></div>)}</div>;

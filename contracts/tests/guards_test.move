@@ -16,33 +16,21 @@ fun id_a(): ID { object::id_from_address(@0xA) }
 fun id_b(): ID { object::id_from_address(@0xB) }
 fun approx(a: u64, b: u64, tol: u64): bool { if (a > b) a - b <= tol else b - a <= tol }
 
-// Valid baseline ladder: wk 1.13 < trigger 1.25 < target 1.40, slippage 50bps, tranche 25%.
-fun ok_thresholds() { policy::assert_thresholds(2, 1_250_000_000, 1_400_000_000, 1_130_000_000, 50, 2_500); }
+// Valid baseline ladder: 1.0 < trigger 1.25 < target 1.40.
+fun ok_thresholds() { policy::assert_thresholds(2, 1_250_000_000, 1_400_000_000); }
 
-// ── S7: policy bounds (AI/param injection) ──────────────────────────────────
+// ── S7: policy bounds (param injection) ─────────────────────────────────────
 #[test]
 fun s7_valid_thresholds_pass() { ok_thresholds(); }
 
 #[test, expected_failure(abort_code = policy::EInvalidTier)]
-fun s7_tier_too_high_aborts() { policy::assert_thresholds(3, 1_250_000_000, 1_400_000_000, 1_130_000_000, 50, 2_500); }
+fun s7_tier_too_high_aborts() { policy::assert_thresholds(3, 1_250_000_000, 1_400_000_000); }
 
 #[test, expected_failure(abort_code = policy::EInvalidThresholds)]
-fun s7_whiteknight_below_one_aborts() { policy::assert_thresholds(2, 1_250_000_000, 1_400_000_000, FLOAT, 50, 2_500); }
+fun s7_trigger_not_above_one_aborts() { policy::assert_thresholds(2, FLOAT, 1_400_000_000); }
 
 #[test, expected_failure(abort_code = policy::EInvalidThresholds)]
-fun s7_whiteknight_above_trigger_aborts() { policy::assert_thresholds(2, 1_250_000_000, 1_400_000_000, 1_300_000_000, 50, 2_500); }
-
-#[test, expected_failure(abort_code = policy::EInvalidThresholds)]
-fun s7_target_below_trigger_aborts() { policy::assert_thresholds(2, 1_250_000_000, 1_200_000_000, 1_130_000_000, 50, 2_500); }
-
-#[test, expected_failure(abort_code = policy::EInvalidSlippage)]
-fun s7_slippage_over_cap_aborts() { policy::assert_thresholds(2, 1_250_000_000, 1_400_000_000, 1_130_000_000, 201, 2_500); }
-
-#[test, expected_failure(abort_code = policy::EInvalidSlippage)]
-fun s7_zero_slippage_aborts() { policy::assert_thresholds(2, 1_250_000_000, 1_400_000_000, 1_130_000_000, 0, 2_500); }
-
-#[test, expected_failure(abort_code = policy::EInvalidTranche)]
-fun s7_zero_tranche_aborts() { policy::assert_thresholds(2, 1_250_000_000, 1_400_000_000, 1_130_000_000, 50, 0); }
+fun s7_target_below_trigger_aborts() { policy::assert_thresholds(2, 1_250_000_000, 1_200_000_000); }
 
 // ── S1 / S5: executor execution guards ──────────────────────────────────────
 // args: active, tier, policy_mgr, mgr, now, last, interval, rr, trigger
