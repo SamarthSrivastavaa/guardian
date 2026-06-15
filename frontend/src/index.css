@@ -89,6 +89,22 @@ textarea, input { font-family: inherit; }
 .pill .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--safe); }
 .pill.accent { background: var(--accent); }
 
+.seg { display: inline-flex; border: 2px solid var(--ink); }
+.seg-btn { padding: 8px 16px; font-size: 12.5px; font-weight: 700; color: var(--muted); border-right: 2px solid var(--ink); }
+.seg-btn:last-child { border-right: none; }
+.seg-btn.active { background: var(--ink); color: #fff; }
+.seg-btn:disabled { opacity: 0.5; }
+
+.wallet-menu {
+  position: absolute; right: 0; top: calc(100% + 8px); z-index: 20; min-width: 200px;
+  background: var(--panel); border: 2px solid var(--ink); box-shadow: var(--shadow); padding: 5px;
+}
+.wallet-opt {
+  display: flex; align-items: center; gap: 9px; width: 100%; text-align: left; padding: 9px 11px;
+  font-size: 13px; font-weight: 600; color: var(--ink); text-decoration: none;
+}
+.wallet-opt:hover { background: var(--accent); }
+
 .main { flex: 1; overflow-y: auto; }
 .page { padding: 22px; }
 

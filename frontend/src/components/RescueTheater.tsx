@@ -1,175 +1,161 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Gauge } from './Gauge';
-import { guardianRiskScore, riskRatio, explainEvent, bandColor } from '../lib/guardian';
+import { bandColor } from '../lib/guardian';
+import { simulate, MARKER_META, FRAME_MS, SCENARIO_META, type Marker, type ScenarioKey } from '../lib/sim';
 
-// Identical 3x-ish longs: 10 SUI collateral, 6.0 DBUSDC quote debt. Crash from 0.95 → ~0.60.
-const START = { base: 10, debt: 6.0 };
-const RR_LIQ = 1.10, TRIGGER = 1.30, TARGET = 1.45, USER_REWARD = 0.05;
-const CRASH_FROM = 0.95, CRASH_TO = 0.605, TICKS = 64, MS = 150;
-
-// Deterministic crash path: downward drift + mild noise (seeded), reproducible every run.
-function buildPath(): number[] {
-  const p: number[] = []; let seed = 7;
-  const rnd = () => ((seed = (seed * 1103515245 + 12345) & 0x7fffffff) / 0x7fffffff - 0.5);
-  for (let i = 0; i <= TICKS; i++) {
-    const t = i / TICKS;
-    const base = CRASH_FROM + (CRASH_TO - CRASH_FROM) * (t * t * (3 - 2 * t)); // smoothstep
-    p.push(Math.max(0.5, base + rnd() * 0.012 * (1 - t)));
-  }
-  return p;
-}
-
-interface SideState { base: number; debt: number; liquidated: boolean; rescued: boolean; equity0: number; finalEquity: number | null; }
-const equity = (base: number, debt: number, price: number) => base * price - debt; // quote terms
+const usd = (n: number) => `$${Math.round(n).toLocaleString()}`;
+const bandOf = (g: number) => (g < 30 ? 'SAFE' : g < 60 ? 'WATCH' : g < 80 ? 'PROTECT' : 'EMERGENCY');
 
 export function RescueTheater() {
-  const [running, setRunning] = useState(false);
-  const [done, setDone] = useState(false);
-  const [prices, setPrices] = useState<number[]>([CRASH_FROM]);
-  const path = useRef(buildPath());
-  const naked = useRef<SideState>(fresh());
-  const guard = useRef<SideState>(fresh());
-  const [events, setEvents] = useState<{ tick: number; text: string; kind: string }[]>([]);
-  const [, force] = useState(0);
+  const [scenario, setScenario] = useState<ScenarioKey>('standard');
+  const sim = useMemo(() => simulate(scenario), [scenario]);
+  const last = sim.frameCount - 1;
+  const [idx, setIdx] = useState(0);
+  const [playing, setPlaying] = useState(false);
+  const [selected, setSelected] = useState<Marker | null>(null);
   const timer = useRef<number | null>(null);
 
-  function fresh(): SideState { return { base: START.base, debt: START.debt, liquidated: false, rescued: false, equity0: equity(START.base, START.debt, CRASH_FROM), finalEquity: null }; }
+  const pickScenario = (k: ScenarioKey) => { stop(); setScenario(k); setIdx(0); setSelected(null); };
 
-  function reset() {
-    if (timer.current) clearInterval(timer.current);
-    naked.current = fresh(); guard.current = fresh();
-    setPrices([CRASH_FROM]); setEvents([]); setDone(false); setRunning(false); force((x) => x + 1);
-  }
-
-  function start() {
-    reset();
-    setRunning(true);
-    let i = 0;
+  const play = (from = 0) => {
+    stop(); setSelected(null); setIdx(from); setPlaying(true);
     timer.current = window.setInterval(() => {
-      i += 1;
-      const price = path.current[i];
-      step(price, i);
-      setPrices(path.current.slice(0, i + 1));
-      if (i >= TICKS) { clearInterval(timer.current!); setRunning(false); setDone(true); finalize(price); }
-      force((x) => x + 1);
-    }, MS);
-  }
-
-  function step(price: number, i: number) {
-    const n = naked.current;
-    if (!n.liquidated && riskRatio('quote', n.base, 0, n.debt, price) < RR_LIQ) {
-      n.liquidated = true;
-      pushEvent(i, 'liq', `Liquidated at RR ${RR_LIQ.toFixed(2)}. A liquidation bot seized ~${(USER_REWARD * 100).toFixed(0)}% of the collateral as its reward.`);
-    }
-    const g = guard.current;
-    if (!g.liquidated) {
-      const rr = riskRatio('quote', g.base, 0, g.debt, price);
-      if (rr < TRIGGER && !g.rescued) {
-        // Ladder: sell base in a reduce-only tranche, repay debt to restore RR toward TARGET.
-        const aidu = g.base * price; // quote terms (no quote collateral here)
-        const dTarget = aidu / TARGET;
-        const repay = Math.max(0, g.debt - dTarget);
-        const baseSold = repay / price;
-        const before = { debt: g.debt, rr };
-        g.base -= baseSold; g.debt -= repay;
-        const after = riskRatio('quote', g.base, 0, g.debt, price);
-        pushEvent(i, 'protect', explainEvent({ type: 'ProtectionExecuted', rrBefore: before.rr, debtBefore: before.debt, debtAfter: g.debt, debtRepaid: repay, ordersCancelled: 1 }));
-        // If the crash is so steep RR still breaches liq, white-knight returns the reward to the user.
-        if (after < RR_LIQ + 0.02) g.rescued = true;
-      }
-      if (riskRatio('quote', g.base, 0, g.debt, price) < RR_LIQ && !g.rescued) {
-        g.rescued = true;
-        pushEvent(i, 'wk', explainEvent({ type: 'WhiteKnightRescue', baseReturned: g.base * USER_REWARD, quoteReturned: 0 }));
-      }
-    }
-  }
-
-  function finalize(price: number) {
-    const n = naked.current, g = guard.current;
-    // NAKED: liquidation seizes reward; survivor equity is what remains after the bot's cut.
-    n.finalEquity = n.liquidated ? equity(n.base, n.debt, price) * (1 - USER_REWARD) : equity(n.base, n.debt, price);
-    g.finalEquity = equity(g.base, g.debt, price);
-  }
-
-  function pushEvent(t: number, kind: string, text: string) { setEvents((e) => [{ tick: t, kind, text }, ...e]); }
-
+      setIdx((i) => { if (i >= last) { stop(); return last; } return i + 1; });
+    }, FRAME_MS);
+  };
+  const stop = () => { if (timer.current) clearInterval(timer.current); timer.current = null; setPlaying(false); };
   useEffect(() => () => { if (timer.current) clearInterval(timer.current); }, []);
 
-  const price = prices[prices.length - 1];
-  const nakedRR = riskRatio('quote', naked.current.base, 0, naked.current.debt, price);
-  const guardRR = riskRatio('quote', guard.current.base, 0, guard.current.debt, price);
-  const nakedGrs = naked.current.liquidated ? 100 : guardianRiskScore({ ...sideSnap(naked.current, price) }).grs;
-  const guardScore = guardianRiskScore({ ...sideSnap(guard.current, price) });
+  const f = sim.frames[idx];
+  const done = idx >= last;
+  const visibleMarkers = sim.markers.filter((m) => m.frame <= idx);
 
   return (
-    <div className="page" style={{ maxWidth: 1180 }}>
-      <div className="row" style={{ justifyContent: 'space-between', alignItems: 'center', marginBottom: 18 }}>
+    <div className="page" style={{ maxWidth: 1240 }}>
+      <div className="row" style={{ justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: 16 }}>
         <div>
-          <div className="eyebrow">Rescue Theater · live risk engine, scripted crash</div>
-          <div style={{ fontSize: 14, color: 'var(--muted)', marginTop: 6 }}>Two identical 10 SUI / 6 DBUSDC longs. One naked, one protected by Guardian. Same crash.</div>
+          <div className="eyebrow">Rescue Theater · live risk engine · autopsy replay</div>
+          <div style={{ fontSize: 13.5, color: 'var(--muted)', marginTop: 6, maxWidth: 560 }}>
+            Two identical $11.5k longs (10,000 SUI / 8,000 DBUSDC debt), one naked, one Guardian-protected. {SCENARIO_META[scenario].desc}
+          </div>
         </div>
         <div style={{ display: 'flex', gap: 10 }}>
-          <button className="btn btn-ghost" onClick={reset} disabled={running}>Reset</button>
-          <button className="btn btn-primary btn-lg" onClick={start} disabled={running}>{done ? 'Replay crash' : running ? 'Crashing…' : '▶ Run the crash'}</button>
+          <button className="btn btn-ghost" onClick={() => { stop(); setIdx(0); setSelected(null); }} disabled={playing}>Reset</button>
+          <button className="btn btn-primary btn-lg" onClick={() => play(0)} disabled={playing}>{done ? '↻ Replay' : playing ? 'Crashing…' : '▶ Run the crash'}</button>
         </div>
       </div>
 
-      <PriceChart prices={prices} liq={nakedLiqPrice()} trigger={triggerPrice()} />
+      <div className="seg" style={{ marginBottom: 14 }}>
+        {(Object.keys(SCENARIO_META) as ScenarioKey[]).map((k) => (
+          <button key={k} className={`seg-btn ${scenario === k ? 'active' : ''}`} onClick={() => pickScenario(k)} disabled={playing}>
+            {SCENARIO_META[k].label}
+          </button>
+        ))}
+      </div>
+
+      <Chart sim={sim} idx={idx} selected={selected} onPick={(m) => { stop(); setIdx(m.frame); setSelected(m); }} />
+
+      {/* scrubber */}
+      <div className="card card-flat" style={{ padding: '12px 16px', marginTop: 12, display: 'flex', alignItems: 'center', gap: 14 }}>
+        <span className="mono-tag" style={{ minWidth: 64 }}>t {idx}/{last}</span>
+        <input type="range" min={0} max={last} value={idx} onChange={(e) => { stop(); setIdx(Number(e.target.value)); setSelected(null); }}
+          style={{ flex: 1, accentColor: 'var(--ink)' }} />
+        <span className="mono-tag">${f.price.toFixed(4)}</span>
+      </div>
 
       <div className="row" style={{ marginTop: 16, alignItems: 'stretch' }}>
-        <Side title="NAKED" subtitle="no protection" rr={nakedRR} grs={nakedGrs}
-          band={naked.current.liquidated ? 'LIQUIDATABLE' : guardianRiskScore(sideSnap(naked.current, price)).band}
-          dead={naked.current.liquidated} state={naked.current} />
-        <Side title="GUARDIAN" subtitle="protected" rr={guardRR} grs={guardScore.grs}
-          band={guard.current.rescued ? 'EMERGENCY' : guardScore.band}
-          rescued={guard.current.rescued} state={guard.current} events={events} />
+        <SideCard title={sim.nakedLabel} sub={sim.stopPrice != null ? 'stop-loss @ $' + sim.stopPrice.toFixed(2) : 'no protection'} rr={f.naked.rr} grs={f.naked.liquidated ? 100 : 0}
+          dead={f.naked.liquidated} equity={f.naked.equity} />
+        <SideCard title="GUARDIAN" sub="protected" rr={f.guard.rr} grs={f.guard.grs}
+          equity={f.guard.equity} base={f.guard.base} debt={f.guard.debt}
+          rescued={sim.markers.some((m) => m.kind === 'wk' && m.frame <= idx)} components={f.guard.components} />
       </div>
 
-      {done && <Verdict naked={naked.current} guard={guard.current} />}
+      {selected && <Autopsy m={selected} onClose={() => setSelected(null)} />}
+      {done && !selected && <Verdict v={sim.verdict} />}
+
+      <Timeline markers={visibleMarkers} selected={selected} onPick={(m) => { stop(); setIdx(m.frame); setSelected(m); }} />
     </div>
   );
-
-  function sideSnap(s: SideState, p: number) {
-    return { side: 'quote' as const, baseAsset: s.base, quoteAsset: 0, debt: s.debt, rrLiq: RR_LIQ, markPrice: p,
-      sigmaPerHour: 0.05, ratePerYear: 0.2, utilization: 0.9, uKink: 0.8, exitSlippage: 0.002, maxSlippage: 0.005 };
-  }
-  function nakedLiqPrice() { return (RR_LIQ * START.debt) / START.base; }
-  function triggerPrice() { return (TRIGGER * START.debt) / START.base; }
 }
 
-function Side({ title, subtitle, rr, grs, band, dead, rescued, state, events }:
-  { title: string; subtitle: string; rr: number; grs: number; band: string; dead?: boolean; rescued?: boolean; state: any; events?: any[] }) {
+function Chart({ sim, idx, selected, onPick }: { sim: ReturnType<typeof simulate>; idx: number; selected: Marker | null; onPick: (m: Marker) => void }) {
+  const W = 1240, H = 230, pad = 10;
+  const prices = sim.frames.map((fr) => fr.price);
+  const all = [...prices, sim.nakedLiqPrice, sim.triggerPrice];
+  const min = Math.min(...all) * 0.99, max = Math.max(...all) * 1.005;
+  const x = (i: number) => pad + (i / (sim.frameCount - 1)) * (W - pad * 2);
+  const y = (p: number) => pad + (1 - (p - min) / (max - min)) * (H - pad * 2);
+  const revealed = prices.slice(0, idx + 1);
+  const path = (arr: number[]) => arr.map((p, i) => `${i === 0 ? 'M' : 'L'} ${x(i).toFixed(1)} ${y(p).toFixed(1)}`).join(' ');
+
+  return (
+    <div className="card" style={{ padding: 14 }}>
+      <svg width="100%" viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" style={{ display: 'block', overflow: 'visible' }}>
+        <line x1={pad} x2={W - pad} y1={y(sim.triggerPrice)} y2={y(sim.triggerPrice)} stroke="var(--protect)" strokeWidth={1} strokeDasharray="3 5" opacity={0.65} />
+        <line x1={pad} x2={W - pad} y1={y(sim.nakedLiqPrice)} y2={y(sim.nakedLiqPrice)} stroke="var(--danger)" strokeWidth={1} strokeDasharray="3 5" opacity={0.75} />
+        {sim.stopPrice != null && (
+          <g>
+            <line x1={pad} x2={W - pad} y1={y(sim.stopPrice)} y2={y(sim.stopPrice)} stroke="var(--ink)" strokeWidth={1.5} strokeDasharray="6 3" opacity={0.5} />
+            <text x={W - pad - 4} y={y(sim.stopPrice) - 5} textAnchor="end" fontSize="10" fontWeight="700" fill="var(--ink)" opacity={0.6}>stop-loss (never fills)</text>
+          </g>
+        )}
+        <path d={path(prices)} fill="none" stroke="var(--panel-3)" strokeWidth={1.5} />
+        <path d={path(revealed)} fill="none" stroke="var(--ink)" strokeWidth={2.5} strokeLinejoin="round" />
+        {revealed.length > 0 && <circle cx={x(idx)} cy={y(prices[idx])} r={4.5} fill="var(--ink)" />}
+        {sim.markers.filter((m) => m.frame <= idx).map((m, i) => {
+          const meta = MARKER_META[m.kind]; const sel = selected === m;
+          return (
+            <g key={i} transform={`translate(${x(m.frame)}, ${y(m.price)})`} style={{ cursor: 'pointer' }} onClick={() => onPick(m)}>
+              <line x1={0} y1={0} x2={0} y2={H - pad - y(m.price)} stroke={meta.color} strokeWidth={sel ? 1.5 : 1} strokeDasharray="2 3" opacity={0.5} />
+              <circle r={sel ? 11 : 9} fill="var(--panel)" stroke={meta.color} strokeWidth={2.5} />
+              <text textAnchor="middle" dy="4" fontSize="11" fontWeight="800" fill={meta.color}>{meta.glyph}</text>
+            </g>
+          );
+        })}
+      </svg>
+      <div className="row" style={{ justifyContent: 'space-between', marginTop: 8, fontSize: 11 }}>
+        <span className="mono-tag">SUI/DBUSDC</span>
+        <span style={{ display: 'flex', gap: 16 }}>
+          <span style={{ color: 'var(--protect)' }}>— Guardian trigger ${sim.triggerPrice.toFixed(3)}</span>
+          <span style={{ color: 'var(--danger)' }}>— liquidation ${sim.nakedLiqPrice.toFixed(3)}</span>
+        </span>
+      </div>
+    </div>
+  );
+}
+
+function SideCard({ title, sub, rr, grs, dead, rescued, equity, base, debt, components }:
+  { title: string; sub: string; rr: number; grs: number; dead?: boolean; rescued?: boolean; equity: number; base?: number; debt?: number; components?: Record<string, number> }) {
+  const band = dead ? 'LIQUIDATABLE' : rescued ? 'EMERGENCY' : bandOf(grs);
   return (
     <div className="card" style={{ flex: 1, position: 'relative', overflow: 'hidden',
-      borderColor: dead ? 'var(--danger)' : rescued ? 'var(--watch)' : title === 'GUARDIAN' ? 'var(--safe)' : 'var(--ink)',
-      boxShadow: dead ? '4px 4px 0 var(--danger)' : title === 'GUARDIAN' ? '4px 4px 0 var(--safe)' : 'var(--shadow)',
-      transition: 'border-color 0.3s' }}>
+      borderColor: dead ? 'var(--danger)' : title === 'GUARDIAN' ? 'var(--safe)' : 'var(--ink)',
+      boxShadow: dead ? '4px 4px 0 var(--danger)' : title === 'GUARDIAN' ? '4px 4px 0 var(--safe)' : 'var(--shadow)' }}>
       {dead && <div style={{ position: 'absolute', inset: 0, background: 'var(--danger-dim)', pointerEvents: 'none' }} />}
       <div className="card-head" style={{ position: 'relative' }}>
-        <div>
-          <div style={{ fontWeight: 700, fontSize: 15, letterSpacing: '0.02em' }}>{title}</div>
-          <div className="mono-tag" style={{ marginTop: 2 }}>{subtitle}</div>
-        </div>
-        <span className={`chip ${band}`}><span className="cdot" />{dead ? 'LIQUIDATED' : rescued ? 'WHITE-KNIGHT' : band}</span>
+        <div><div style={{ fontWeight: 800, fontSize: 15 }}>{title}</div><div className="mono-tag" style={{ marginTop: 2 }}>{sub}</div></div>
+        <span className={`chip ${band}`}>{dead ? 'LIQUIDATED' : rescued ? 'WHITE-KNIGHT' : band}</span>
       </div>
-      <div className="row" style={{ alignItems: 'center', gap: 20, position: 'relative' }}>
-        <Gauge value={grs} band={dead ? 'LIQUIDATABLE' : band} size={118} />
+      <div className="row" style={{ alignItems: 'center', gap: 18, position: 'relative' }}>
+        {title === 'GUARDIAN' ? <Gauge value={grs} band={band} size={108} /> : <DeadGauge dead={!!dead} />}
         <div style={{ flex: 1 }}>
           <div className="stat-label">Risk ratio</div>
-          <div className="num" style={{ fontSize: 30, fontWeight: 600, color: dead ? 'var(--danger)' : bandColor[band] }}>{isFinite(rr) ? rr.toFixed(3) : '—'}</div>
-          <div className="metrics" style={{ marginTop: 14 }}>
-            <div><div className="stat-label">Collateral</div><div className="num" style={{ fontSize: 13 }}>{state.base.toFixed(3)} SUI</div></div>
-            <div><div className="stat-label">Debt</div><div className="num" style={{ fontSize: 13 }}>{state.debt.toFixed(3)}</div></div>
+          <div className="num" style={{ fontSize: 28, fontWeight: 800, color: dead ? 'var(--danger)' : bandColor[band] }}>{isFinite(rr) ? rr.toFixed(3) : '—'}</div>
+          <div className="metrics" style={{ marginTop: 12 }}>
+            <div><div className="stat-label">Equity</div><div className="num" style={{ fontSize: 15, fontWeight: 800 }}>{usd(equity)}</div></div>
+            {base != null
+              ? <div><div className="stat-label">Position</div><div className="num" style={{ fontSize: 12 }}>{Math.round(base)} SUI · {Math.round(debt!)} debt</div></div>
+              : <div><div className="stat-label">Exposure</div><div className="num" style={{ fontSize: 12 }}>full · unhedged</div></div>}
           </div>
         </div>
       </div>
-      {events && (
-        <div style={{ marginTop: 16, maxHeight: 168, overflowY: 'auto' }}>
-          {events.length === 0 && <div style={{ fontSize: 12.5, color: 'var(--faint)' }}>Guardian is watching. No action yet.</div>}
-          {events.map((e, idx) => (
-            <div className="feed-item fade-in" key={idx} style={{ padding: '10px 0' }}>
-              <div className="feed-ico" style={{ background: e.kind === 'wk' ? 'var(--watch-dim)' : 'var(--safe-dim)', color: e.kind === 'wk' ? 'var(--watch)' : 'var(--safe)' }}>{e.kind === 'wk' ? '♞' : '✓'}</div>
-              <div><div className="feed-time">t{e.tick}</div><div className="feed-text">{e.text}</div></div>
+      {components && (
+        <div style={{ marginTop: 14, display: 'flex', gap: 6, position: 'relative' }}>
+          {Object.entries(components).map(([k, v]) => (
+            <div key={k} style={{ flex: 1, textAlign: 'center' }} title={`${k}: ${(v * 100).toFixed(0)}%`}>
+              <div className="bar" style={{ height: 4 }}><span style={{ width: `${v * 100}%`, background: 'var(--ink)' }} /></div>
+              <div style={{ fontSize: 8.5, color: 'var(--muted)', marginTop: 4, fontWeight: 700, textTransform: 'uppercase' }}>{k.replace('s', '')}</div>
             </div>
           ))}
         </div>
@@ -178,47 +164,96 @@ function Side({ title, subtitle, rr, grs, band, dead, rescued, state, events }:
   );
 }
 
-function Verdict({ naked, guard }: { naked: any; guard: any }) {
-  const nLoss = ((naked.finalEquity - naked.equity0) / naked.equity0) * 100;
-  const gLoss = ((guard.finalEquity - guard.equity0) / guard.equity0) * 100;
-  const saved = guard.finalEquity - naked.finalEquity;
+function DeadGauge({ dead }: { dead: boolean }) {
+  return <div style={{ width: 108, height: 108, display: 'grid', placeItems: 'center', border: '2px dashed var(--panel-3)', borderRadius: '50%' }}>
+    <span style={{ fontSize: 24, color: dead ? 'var(--danger)' : 'var(--faint)' }}>{dead ? '✕' : '—'}</span>
+  </div>;
+}
+
+function Autopsy({ m, onClose }: { m: Marker; onClose: () => void }) {
+  const meta = MARKER_META[m.kind];
   return (
-    <div className="card fade-in" style={{ marginTop: 16, borderColor: 'var(--safe)' }}>
-      <div className="row" style={{ alignItems: 'center', justifyContent: 'space-around', textAlign: 'center' }}>
-        <div><div className="stat-label">Naked P&amp;L</div><div className="num" style={{ fontSize: 26, fontWeight: 700, color: 'var(--danger)' }}>{nLoss.toFixed(1)}%</div></div>
-        <div style={{ fontSize: 22, color: 'var(--faint)' }}>→</div>
-        <div><div className="stat-label">Guardian P&amp;L</div><div className="num" style={{ fontSize: 26, fontWeight: 700, color: gLoss < 0 ? 'var(--watch)' : 'var(--safe)' }}>{gLoss.toFixed(1)}%</div></div>
-        <div style={{ width: 1, alignSelf: 'stretch', background: 'var(--border)' }} />
-        <div><div className="stat-label">Equity saved (quote)</div><div className="num" style={{ fontSize: 26, fontWeight: 700, color: 'var(--safe)' }}>+{saved.toFixed(3)}</div></div>
+    <div className="card fade-in" style={{ marginTop: 16, borderColor: meta.color, boxShadow: `4px 4px 0 ${meta.color}` }}>
+      <div className="card-head">
+        <div style={{ display: 'flex', alignItems: 'center', gap: 11 }}>
+          <span className="feed-ico" style={{ background: meta.color, color: 'var(--ink)', borderColor: 'var(--ink)' }}>{meta.glyph}</span>
+          <div><div style={{ fontWeight: 800, fontSize: 15 }}>{m.label}</div><div className="mono-tag" style={{ marginTop: 2 }}>autopsy · frame {m.frame} · ${m.price.toFixed(4)}</div></div>
+        </div>
+        <button className="btn btn-ghost" style={{ padding: '6px 12px', boxShadow: 'none' }} onClick={onClose}>Close</button>
       </div>
+      <div style={{ fontSize: 13.5, color: 'var(--text-2)', lineHeight: 1.55, marginBottom: 14 }}>{m.detail}</div>
+      <div className="metrics" style={{ gridTemplateColumns: 'repeat(4,1fr)' }}>
+        <KV label="RR before → after" value={`${m.rrBefore.toFixed(3)} → ${m.rrAfter.toFixed(3)}`} />
+        <KV label="Debt repaid" value={m.debtRepaid > 0 ? usd(m.debtRepaid) : '—'} />
+        <KV label="GRS at fire" value={String(Math.round(m.grs))} />
+        <KV label="Receipt" value={m.txHash ? `${m.net} ✓` : m.net} />
+      </div>
+      {Object.keys(m.components).length > 0 && (
+        <div style={{ marginTop: 14 }}>
+          <div className="stat-label">GRS components at this moment</div>
+          <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
+            {Object.entries(m.components).map(([k, v]) => (
+              <div key={k} style={{ flex: 1 }}>
+                <div className="bar" style={{ height: 6 }}><span style={{ width: `${v * 100}%`, background: meta.color }} /></div>
+                <div style={{ fontSize: 9.5, color: 'var(--muted)', marginTop: 5, fontWeight: 700, textTransform: 'uppercase' }}>{k.replace('s', '')} {(v * 100).toFixed(0)}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+      {m.txHash && (
+        <a className="mono-tag" href={`https://suiscan.xyz/testnet/tx/${m.txHash}`} target="_blank" rel="noreferrer"
+          style={{ display: 'block', marginTop: 14, wordBreak: 'break-all', border: '1.5px solid var(--ink)', padding: '9px 11px', fontSize: 11 }}>
+          <b>on-chain receipt ({m.net})</b> · {m.txHash} ↗
+        </a>
+      )}
+      {!m.txHash && <div className="mono-tag" style={{ marginTop: 14, fontSize: 11, color: 'var(--faint)' }}>receipt: runs on the self-published localnet stack (reduce-only / white-knight require the local oracle — §0.5)</div>}
     </div>
   );
 }
 
-function PriceChart({ prices, liq, trigger }: { prices: number[]; liq: number; trigger: number }) {
-  const W = 1120, H = 200, pad = 8;
-  const all = [...prices, liq, trigger, CRASH_FROM, CRASH_TO];
-  const min = Math.min(...all) * 0.99, max = Math.max(...all) * 1.005;
-  const x = (i: number) => pad + (i / TICKS) * (W - pad * 2);
-  const y = (p: number) => pad + (1 - (p - min) / (max - min)) * (H - pad * 2);
-  const path = prices.map((p, i) => `${i === 0 ? 'M' : 'L'} ${x(i).toFixed(1)} ${y(p).toFixed(1)}`).join(' ');
-  const last = prices.length - 1;
+function KV({ label, value }: { label: string; value: string }) {
+  return <div><div className="stat-label">{label}</div><div className="num" style={{ fontSize: 14, fontWeight: 800 }}>{value}</div></div>;
+}
+
+function Verdict({ v }: { v: ReturnType<typeof simulate>['verdict'] }) {
   return (
-    <div className="card" style={{ padding: 16 }}>
-      <svg width="100%" viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" style={{ display: 'block' }}>
-        <line x1={pad} x2={W - pad} y1={y(trigger)} y2={y(trigger)} stroke="var(--protect)" strokeWidth={1} strokeDasharray="4 5" opacity={0.6} />
-        <line x1={pad} x2={W - pad} y1={y(liq)} y2={y(liq)} stroke="var(--danger)" strokeWidth={1} strokeDasharray="4 5" opacity={0.7} />
-        <path d={`${path} L ${x(last)} ${H - pad} L ${x(0)} ${H - pad} Z`} fill="url(#g)" opacity={0.5} />
-        <path d={path} fill="none" stroke="var(--text)" strokeWidth={2} strokeLinejoin="round" />
-        {prices.length > 1 && <circle cx={x(last)} cy={y(prices[last])} r={4} fill="var(--text)" />}
-        <defs><linearGradient id="g" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor="var(--accent)" stopOpacity={0.25} /><stop offset="1" stopColor="var(--accent)" stopOpacity={0} /></linearGradient></defs>
-      </svg>
-      <div className="row" style={{ justifyContent: 'space-between', marginTop: 8, fontSize: 11 }}>
-        <span className="mono-tag">SUI/DBUSDC · ${prices[last]?.toFixed(4)}</span>
-        <span style={{ display: 'flex', gap: 16 }}>
-          <span style={{ color: 'var(--protect)' }}>— trigger ${trigger.toFixed(3)}</span>
-          <span style={{ color: 'var(--danger)' }}>— liquidation ${liq.toFixed(3)}</span>
-        </span>
+    <div className="card fade-in" style={{ marginTop: 16, borderColor: 'var(--safe)', boxShadow: '4px 4px 0 var(--safe)' }}>
+      <div className="row" style={{ alignItems: 'center', justifyContent: 'space-around', textAlign: 'center', marginBottom: 14 }}>
+        <div><div className="stat-label">Naked — lost</div><div className="num" style={{ fontSize: 27, fontWeight: 800, color: 'var(--danger)' }}>−{usd(v.nakedLoss)}</div></div>
+        <div style={{ fontSize: 20, color: 'var(--faint)' }}>vs</div>
+        <div><div className="stat-label">Guardian — lost</div><div className="num" style={{ fontSize: 27, fontWeight: 800, color: 'var(--watch)' }}>−{usd(v.guardLoss)}</div></div>
+        <div style={{ width: 2, alignSelf: 'stretch', background: 'var(--ink)' }} />
+        <div><div className="stat-label">Equity saved</div><div className="num" style={{ fontSize: 27, fontWeight: 800, color: 'var(--safe)' }}>+{usd(v.saved)}</div></div>
+        {v.wkReward > 0 && <div><div className="stat-label">Reward returned</div><div className="num" style={{ fontSize: 27, fontWeight: 800, background: 'var(--accent)', color: 'var(--ink)', padding: '0 6px' }}>{usd(v.wkReward)}</div></div>}
+      </div>
+      <div style={{ fontSize: 14, fontWeight: 600, textAlign: 'center', lineHeight: 1.5 }}>{v.line}</div>
+    </div>
+  );
+}
+
+function Timeline({ markers, selected, onPick }: { markers: Marker[]; selected: Marker | null; onPick: (m: Marker) => void }) {
+  if (markers.length === 0) return null;
+  return (
+    <div className="card" style={{ marginTop: 16 }}>
+      <div className="card-head"><span className="card-title">Keeper actions</span><span className="mono-tag">click to inspect</span></div>
+      <div style={{ display: 'flex', flexDirection: 'column' }}>
+        {markers.map((m, i) => {
+          const meta = MARKER_META[m.kind];
+          return (
+            <button key={i} className="feed-item" onClick={() => onPick(m)}
+              style={{ textAlign: 'left', background: selected === m ? 'var(--accent)' : 'transparent', padding: '11px 8px' }}>
+              <span className="feed-ico" style={{ background: meta.color, color: 'var(--ink)', borderColor: 'var(--ink)' }}>{meta.glyph}</span>
+              <div style={{ flex: 1 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                  <span style={{ fontWeight: 700, fontSize: 13.5 }}>{m.label}</span>
+                  <span className="mono-tag">${m.price.toFixed(3)} · RR {m.rrAfter.toFixed(2)}{m.txHash ? ' · ✓' : ''}</span>
+                </div>
+                <div className="feed-text" style={{ marginTop: 2 }}>{m.detail}</div>
+              </div>
+            </button>
+          );
+        })}
       </div>
     </div>
   );

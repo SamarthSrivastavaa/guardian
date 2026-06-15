@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useCurrentAccount, useSignPersonalMessage } from '@mysten/dapp-kit';
 import { composePolicyFromIntent, type PolicyParams } from '../lib/guardian';
 
 const EXAMPLES = [
@@ -15,8 +16,29 @@ export function Composer() {
   const [text, setText] = useState(DEFAULT_INTENT);
   const [result, setResult] = useState<ReturnType<typeof composePolicyFromIntent> | null>(() => composePolicyFromIntent(DEFAULT_INTENT));
   const [confirmed, setConfirmed] = useState(false);
+  const [signing, setSigning] = useState(false);
+  const [sig, setSig] = useState<string | null>(null);
 
-  const compose = (t: string) => { setText(t); setResult(composePolicyFromIntent(t)); setConfirmed(false); };
+  const account = useCurrentAccount();
+  const { mutate: signPersonalMessage } = useSignPersonalMessage();
+
+  const compose = (t: string) => { setText(t); setResult(composePolicyFromIntent(t)); setConfirmed(false); setSig(null); };
+
+  const authorize = () => {
+    if (!result || !account) return;
+    // Non-custodial authorization: the wallet signs the policy envelope (the exact params the
+    // on-chain guardian::policy::create will use). Real signature, no custody, no fake tx —
+    // the signed envelope is what a keeper broadcasts once the package is live (localnet today).
+    const envelope = JSON.stringify({ kind: 'guardian.policy', owner: account.address, ...result.params });
+    setSigning(true);
+    signPersonalMessage(
+      { message: new TextEncoder().encode(envelope) },
+      {
+        onSuccess: (r) => { setSig(r.signature); setConfirmed(true); setSigning(false); },
+        onError: () => setSigning(false),
+      },
+    );
+  };
 
   return (
     <div className="page" style={{ maxWidth: 1060, margin: '0 auto' }}>
@@ -63,9 +85,15 @@ export function Composer() {
               <Permission text="Increase your debt or open new leverage" />
             </ul>
             <button className="btn btn-primary btn-lg" style={{ width: '100%', marginTop: 18 }}
-              disabled={!result.valid || confirmed} onClick={() => setConfirmed(true)}>
-              {confirmed ? '✓ Policy authorized (sign in wallet)' : 'Confirm & sign policy'}
+              disabled={!result.valid || !account || signing || confirmed} onClick={authorize}>
+              {confirmed ? '✓ Policy authorized' : signing ? 'Signing…' : !account ? 'Connect wallet to sign' : 'Confirm & sign policy'}
             </button>
+            {sig && (
+              <div className="mono-tag" style={{ marginTop: 10, wordBreak: 'break-all', fontSize: 10, lineHeight: 1.4,
+                border: '1.5px solid var(--safe)', padding: '8px 10px' }}>
+                <b style={{ color: 'var(--safe)' }}>signed envelope</b> · {sig.slice(0, 44)}…
+              </div>
+            )}
             <div style={{ fontSize: 11, color: 'var(--faint)', textAlign: 'center', marginTop: 8 }}>Tier {result.params.tier} · {TIER_NAME[result.params.tier]}</div>
           </div>
         </div>

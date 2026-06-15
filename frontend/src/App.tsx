@@ -2,18 +2,23 @@ import { useState } from 'react';
 import { Dashboard } from './components/Dashboard';
 import { Composer } from './components/Composer';
 import { RescueTheater } from './components/RescueTheater';
+import { SavesWall } from './components/SavesWall';
+import { Lenders } from './components/Lenders';
+import { WalletButton } from './components/WalletButton';
 
-type View = 'dashboard' | 'composer' | 'theater';
+type View = 'dashboard' | 'composer' | 'theater' | 'saves' | 'lenders';
 
 const NAV: { id: View; label: string }[] = [
   { id: 'dashboard', label: 'Positions' },
   { id: 'composer', label: 'Policy composer' },
   { id: 'theater', label: 'Rescue Theater' },
+  { id: 'saves', label: 'Saves Wall' },
+  { id: 'lenders', label: 'For Lenders' },
 ];
 
 const initialView = (): View => {
   const h = window.location.hash.replace('#', '');
-  return h === 'composer' || h === 'theater' ? h : 'dashboard';
+  return h === 'composer' || h === 'theater' || h === 'saves' || h === 'lenders' ? h : 'dashboard';
 };
 
 export default function App() {
@@ -44,7 +49,7 @@ export default function App() {
 
         <div className="header-right">
           <span className="pill">testnet</span>
-          <span className="pill accent"><span className="dot" style={{ background: 'var(--ink)' }} />keeper live · non-custodial</span>
+          <WalletButton />
         </div>
       </header>
 
@@ -52,6 +57,8 @@ export default function App() {
         {view === 'dashboard' && <Dashboard />}
         {view === 'composer' && <Composer />}
         {view === 'theater' && <RescueTheater />}
+        {view === 'saves' && <SavesWall />}
+        {view === 'lenders' && <Lenders />}
       </main>
     </div>
   );
