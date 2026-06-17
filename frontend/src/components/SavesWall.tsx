@@ -14,7 +14,8 @@ function shareUrl(s: Save) {
 export function SavesWall() {
   return (
     <div className="page">
-      <DemoBanner text="Sample feed. The first two cards carry real Walrus-testnet receipts and real testnet transactions; the rest illustrate the format the keeper will publish automatically." />
+      <DemoBanner text="Sample feed. The first two rows carry real Walrus-testnet receipts and real testnet transactions; the rest illustrate the format the keeper will publish automatically." />
+
       <div className="grid" style={{ gridTemplateColumns: 'repeat(4, 1fr)', marginBottom: 16 }}>
         <Stat label="Total saves" value={String(SAVES_STATS.totalSaves)} />
         <Stat label="Value protected" value={usd(SAVES_STATS.valueProtected)} accent="var(--safe)" />
@@ -22,53 +23,49 @@ export function SavesWall() {
         <Stat label="Rewards returned to users" value={usd(SAVES_STATS.rewardsReturned)} accent="var(--accent)" ink />
       </div>
 
-      <div style={{ fontSize: 12.5, color: 'var(--muted)', margin: '0 2px 16px', lineHeight: 1.6, maxWidth: 780 }}>
-        Each rescue is designed to publish a tamper-evident receipt on <b style={{ color: 'var(--ink)' }}>Walrus</b> — the structured
-        event the explainer narrates, plus the on-chain tx — so anyone can verify a non-custodial protection fired. The receipt format
-        and anchoring are <b style={{ color: 'var(--ink)' }}>live and verifiable today</b> (click a Walrus receipt below); automatic
-        anchoring on every rescue ships with the keeper loop. Wallets are prefix-anonymized.
+      <div style={{ fontSize: 12.5, color: 'var(--muted)', margin: '0 2px 16px', lineHeight: 1.6, maxWidth: 820 }}>
+        Each rescue publishes a tamper-evident receipt on <b style={{ color: 'var(--ink)' }}>Walrus</b> — the structured event plus
+        the on-chain tx — so anyone can verify a non-custodial protection fired. Receipt format + anchoring are
+        <b style={{ color: 'var(--ink)' }}> live and verifiable today</b> (open a receipt below). Wallets are prefix-anonymized.
       </div>
 
-      <div className="grid" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(420px, 1fr))' }}>
-        {SAVES.map((s, i) => (
-          <div className="card fade-in" key={i}>
-            <div className="card-head">
-              <div>
-                <div style={{ fontWeight: 800, fontSize: 15 }}>{s.pair} <span className="mono-tag">· {s.wallet}</span></div>
-                <div className="mono-tag" style={{ marginTop: 3 }}>{s.ts} · {s.network}</div>
-              </div>
-              <span className={`chip ${s.kind === 'WhiteKnightRescue' ? 'WATCH' : 'SAFE'}`}>{s.kind === 'WhiteKnightRescue' ? 'WHITE-KNIGHT' : 'PROTECTED'}</span>
-            </div>
-
-            <div className="row" style={{ alignItems: 'baseline', gap: 24, marginBottom: 12 }}>
-              <div>
-                <div className="stat-label">Saved vs liquidation</div>
-                <div className="num" style={{ fontSize: 30, fontWeight: 800, color: 'var(--safe)' }}>{usd(s.savedUsd)}</div>
-              </div>
-              <div>
-                <div className="stat-label">Debt repaid</div>
-                <div className="num" style={{ fontSize: 17, fontWeight: 800 }}>{usd(s.debtRepaidUsd)}</div>
-              </div>
-              {s.rewardUsd != null && (
-                <div>
-                  <div className="stat-label">Reward returned</div>
-                  <div className="num" style={{ fontSize: 17, fontWeight: 800, background: 'var(--accent)', padding: '0 5px' }}>{usd(s.rewardUsd)}</div>
-                </div>
-              )}
-            </div>
-
-            <div style={{ fontSize: 13, color: 'var(--text-2)', lineHeight: 1.5, borderLeft: '3px solid var(--ink)', paddingLeft: 11, marginBottom: 14 }}>{s.trigger}</div>
-
-            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-              {s.walrus
-                ? <a className="btn btn-ghost" style={{ fontSize: 12, padding: '8px 12px' }} href={s.walrus} target="_blank" rel="noreferrer">Walrus receipt ↗</a>
-                : <span className="btn btn-ghost" style={{ fontSize: 12, padding: '8px 12px', opacity: 0.5, boxShadow: 'none' }}>receipt: localnet</span>}
-              {s.keeperTx && <a className="btn btn-ghost" style={{ fontSize: 12, padding: '8px 12px' }} href={`https://suiscan.xyz/testnet/tx/${s.keeperTx}`} target="_blank" rel="noreferrer" title="Real testnet DeepBook Margin transaction (repay/cancel) — the same op a rescue performs">testnet tx ↗</a>}
-              <a className="btn btn-ink" style={{ fontSize: 12, padding: '8px 12px', marginLeft: 'auto' }} href={shareUrl(s)} target="_blank" rel="noreferrer">Share to 𝕏</a>
-            </div>
-          </div>
-        ))}
+      <div className="ledger">
+        <div className="ledger-head">
+          <span>Time</span><span>Position</span><span>Type</span>
+          <span className="r">Saved</span><span className="r">Debt repaid</span><span className="r">Reward</span>
+          <span className="r">Receipt</span>
+        </div>
+        {SAVES.map((s, i) => <Row key={i} s={s} />)}
       </div>
+    </div>
+  );
+}
+
+function Row({ s }: { s: Save }) {
+  const [date, time] = s.ts.split(' ');
+  const wk = s.kind === 'WhiteKnightRescue';
+  return (
+    <div className="ledger-row">
+      <div className="ledger-line">
+        <div className="ledger-time">{time}</div>
+        <div className="ledger-pos"><b>{s.pair}</b> <span className="mono-tag">{s.wallet}</span></div>
+        <div><span className={`chip ${wk ? 'WATCH' : 'SAFE'}`}>{wk ? 'WHITE-KNIGHT' : 'PROTECTED'}</span></div>
+        <div className="ledger-num saved">+{usd(s.savedUsd)}</div>
+        <div className="ledger-num">{usd(s.debtRepaidUsd)}</div>
+        <div className="ledger-num">{s.rewardUsd != null
+          ? <span style={{ background: 'var(--accent)', color: 'var(--ink)', padding: '1px 5px' }}>{usd(s.rewardUsd)}</span>
+          : <span className="muted">—</span>}</div>
+        <div className="ledger-actions">
+          {s.walrus
+            ? <a className="ledger-link" href={s.walrus} target="_blank" rel="noreferrer">Walrus ↗</a>
+            : <span className="ledger-link off">localnet</span>}
+          {s.keeperTx
+            ? <a className="ledger-link" href={`https://suiscan.xyz/testnet/tx/${s.keeperTx}`} target="_blank" rel="noreferrer" title="Real testnet DeepBook Margin tx (repay/cancel) — the same op a rescue performs">tx ↗</a>
+            : <span className="ledger-link off">—</span>}
+          <a className="ledger-link ink" href={shareUrl(s)} target="_blank" rel="noreferrer">𝕏</a>
+        </div>
+      </div>
+      <div className="ledger-memo"><span className="ts">{date} · {s.network}</span> &nbsp;—&nbsp; {s.trigger}</div>
     </div>
   );
 }

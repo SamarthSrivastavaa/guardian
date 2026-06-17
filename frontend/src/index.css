@@ -89,6 +89,38 @@ textarea, input { font-family: inherit; }
 .pill .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--safe); }
 .pill.accent { background: var(--accent); }
 
+/* ── ledger (order-book style rows) ───────────────────────────────────────── */
+.ledger { border: 2px solid var(--ink); background: var(--panel); box-shadow: var(--shadow); }
+.ledger-head, .ledger-line {
+  display: grid; grid-template-columns: 64px 1.5fr 124px 1fr 1.1fr 1fr 184px; gap: 18px; align-items: center;
+}
+.ledger-head {
+  position: sticky; top: 60px; z-index: 2; background: var(--ink); color: #fff; padding: 12px 20px;
+  font-size: 10px; text-transform: uppercase; letter-spacing: 0.07em; font-weight: 800;
+}
+.ledger-head .r { text-align: right; }
+.ledger-row { border-top: 1.5px solid var(--panel-3); padding: 13px 20px; transition: background 0.1s ease; }
+.ledger-row:first-of-type { border-top: none; }
+.ledger-row:hover { background: var(--panel-2); }
+.ledger-time { font-family: var(--mono); font-size: 13px; font-weight: 700; color: var(--ink); }
+.ledger-pos b { font-size: 13.5px; font-weight: 800; }
+.ledger-memo { font-size: 11.5px; color: var(--muted); margin-top: 6px; padding-left: 82px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ledger-memo .ts { font-family: var(--mono); color: var(--faint); }
+.ledger-num { text-align: right; font-family: var(--mono); font-variant-numeric: tabular-nums; font-weight: 700; font-size: 14px; }
+.ledger-num.saved { color: var(--safe); font-size: 15px; }
+.ledger-num.muted { color: var(--faint); font-weight: 500; }
+.ledger .chip { min-width: 108px; justify-content: center; }
+.ledger-actions { display: flex; gap: 7px; justify-content: flex-end; }
+.ledger-link {
+  display: inline-flex; align-items: center; justify-content: center; min-width: 54px;
+  font-size: 10.5px; font-weight: 800; border: 1.5px solid var(--ink); padding: 5px 9px; color: var(--ink);
+  text-decoration: none; white-space: nowrap; transition: all 0.1s ease; background: var(--panel);
+}
+.ledger-link:hover { background: var(--accent); }
+.ledger-link.ink { background: var(--ink); color: #fff; min-width: 34px; }
+.ledger-link.ink:hover { background: var(--accent); color: var(--ink); }
+.ledger-link.off { opacity: 0.4; pointer-events: none; }
+
 /* ── landing ──────────────────────────────────────────────────────────────── */
 .lp { max-width: 1080px; margin: 0 auto; padding: 0 22px; }
 .hero { padding: 76px 0 52px; border-bottom: 2px solid var(--ink); }
