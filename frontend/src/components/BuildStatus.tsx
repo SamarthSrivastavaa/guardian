@@ -26,9 +26,9 @@ const ROWS: { component: string; status: Status; notes: string }[] = [
   { component: 'Keeper loop (poll → decide → execute)', status: 'Roadmap',
     notes: 'decide() and the PTB builders exist and are unit-tested; the resilient runtime loop (polling, retry, scheduling) is not built yet.' },
   { component: 'Guardian package + policy + registry', status: 'Live',
-    notes: 'Deployed on testnet (package 0x16ba4b3c…). policy::create executed on-chain — real ProtectionPolicy created and bound to a real manager. Registry + vault shared objects live.' },
-  { component: 'Executor on testnet', status: 'Roadmap',
-    notes: 'Deployed, but the live margin pools only accept an older internal margin version (allowed_versions=[1]) while the public source links a disabled upgrade — so execute_protection runs on localnet (self-published stack, no version drift), as the design always intended.' },
+    notes: 'Deployed on testnet (package 0xed5f64…), linked against the margin version the live pools accept. policy::create executed on-chain — real ProtectionPolicy bound to a real manager. Registry + vault shared objects live.' },
+  { component: 'Executor on testnet', status: 'Live',
+    notes: 'execute_protection runs against a real DeepBook margin manager on testnet — Pyth-refreshed, deleveraged debt 0.10→0.00 SUI, reduce-only invariant held, ProtectionExecuted emitted (tx 6j2q7X…). Permissionless and non-custodial: the reward returns to the position owner.' },
 ];
 
 const order: Record<Status, number> = { Live: 0, Simulated: 1, Roadmap: 2 };

@@ -1,10 +1,10 @@
-// Live Guardian testnet deployment (mirrors deployment.testnet.json). The policy + registry
-// modules are live and functional; policy::create has been exercised on-chain.
+// Live Guardian testnet deployment (mirrors deployment.testnet.json). Linked against the
+// margin version the live pools accept — policy::create AND execute_protection both run on-chain.
 export const DEPLOYMENT = {
   network: 'testnet' as const,
-  packageId: '0x16ba4b3cbe87719eceb465b6b69488c924c4526d5d02e5df7691a9732fdffdfb',
-  guardianRegistryId: '0xc54ecddad290b49cbb9efd4fbefd9375929e01dbb373a8fd9f63a3e5d9e551fc',
-  guardianVaultId: '0x3611792cc17755286297e1f727948062e20d403f633604a9232371bd63ee85df',
+  packageId: '0xed5f648eaac50297498883a2c4939d399959494c3981e806a10b8962b446d7fe',
+  guardianRegistryId: '0x112d5e90e443ca0c23b9ca3d6ab06ea079104b68727c8996b97e511c5c6458f9',
+  guardianVaultId: '0xc3d55f58d1d93a02bf080335afa5aeddfcf4c40488265ee85e572d4134b99fd2',
 };
 
 // SUI/DBUSDC is the demo pool. policy::create is generic over <Base, Quote> = the manager's pool.

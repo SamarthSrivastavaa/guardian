@@ -1,9 +1,11 @@
 {
   "network": "testnet",
-  "publishedAt": "2026-06-18T17:01:17.873Z",
-  "digest": "8APGXfrHWRmZNbBWhujSD7CoPzowyuzZtto6S9KHZn3J",
-  "packageId": "0x16ba4b3cbe87719eceb465b6b69488c924c4526d5d02e5df7691a9732fdffdfb",
-  "guardianRegistryId": "0xc54ecddad290b49cbb9efd4fbefd9375929e01dbb373a8fd9f63a3e5d9e551fc",
-  "guardianVaultId": "0x3611792cc17755286297e1f727948062e20d403f633604a9232371bd63ee85df",
-  "guardianAdminCapId": "0xbe10b74e209926de879c3fb1c5acd7c2e47fe9937c88b6a45ece90399095ab9e"
+  "publishedAt": "2026-06-18T17:56:01.540Z",
+  "digest": "CkCeqwNF5yjnxbq58nr4coW5sUvCVsGp54d3bYNUkQZk",
+  "packageId": "0xed5f648eaac50297498883a2c4939d399959494c3981e806a10b8962b446d7fe",
+  "guardianRegistryId": "0x112d5e90e443ca0c23b9ca3d6ab06ea079104b68727c8996b97e511c5c6458f9",
+  "guardianVaultId": "0xc3d55f58d1d93a02bf080335afa5aeddfcf4c40488265ee85e572d4134b99fd2",
+  "guardianAdminCapId": "0x2ef213a64054c5c007c8a9d64607749d8250d9cf56934affb245aa092d586bd3",
+  "marginVersion": 1,
+  "executorProvenTx": "6j2q7XiMY6TMEfdJhX5oLZad7JfQTUxar9iTFpE8GE8x"
 }

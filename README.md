@@ -69,9 +69,10 @@ sui move test --gas-limit 100000000000   # 15 tests
 | Walrus receipt format | **Live** | Versioned `guardian.rescue.v1`; receipts anchored + readable today |
 | Rescue Theater | **Simulated** | Real engine + executor logic over a scripted price path |
 | Saves Wall / For Lenders | **Simulated** | Sample data; real Walrus + testnet txs on two Saves cards; real pool IDs/utilization |
+| Guardian deployment (policy/registry/vault) | **Live** | Published on testnet (`0xed5f64…`); `policy::create` exercised on-chain |
+| Executor on testnet | **Live** | `execute_protection` deleveraged a real margin manager — Pyth-refreshed, debt 0.10→0.00 SUI, reduce-only held, `ProtectionExecuted` emitted (tx `6j2q7X…`) |
 | Dashboard live data | **Roadmap** | Currently sample positions; connected-wallet reads next |
-| Keeper loop | **Roadmap** | `decide()` + PTB builders exist + tested; resilient loop not built |
-| Guardian contract deployment | **Roadmap** | Localnet full-stack publish (testnet blocked by margin version drift) |
+| Keeper loop | **Roadmap** | `decide()` + PTB builders exist + tested; resilient runtime loop not built |
 
 The in-app **Build status** page mirrors this table.
 

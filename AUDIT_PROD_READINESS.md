@@ -10,9 +10,22 @@ blueprint and the demo narrative.
 ## Resolutions (honest-demo session, 2026-06-16)
 
 The ~4–6h honest-demo pass closed the items below. The body of this report is left **unchanged** on
-purpose — to show the audit existed, was taken seriously, and was acted on. The remaining critical
-gaps (C2 keeper loop, C3 contract deployment, C4 live on-chain executor) are untouched: they are the
-40–60h "make it run for users" path, explicitly out of scope for this session.
+purpose — to show the audit existed, was taken seriously, and was acted on. A later session then
+closed **C3 and C4** (contract deployment + live on-chain executor on testnet); only C2 (the
+resilient keeper runtime loop) remains of the original criticals.
+
+- **C3 (contracts not deployed / can't run on testnet) — FIXED.** The Guardian package is published
+  on testnet (`0xed5f648e…`), linked against the exact margin version the live pools accept
+  (`0xd6a4`, the older deployment) rather than the public `main` that links a disabled upgrade. Root
+  cause of the earlier `VMVerificationOrDeserializationError` / `EPackageVersionDisabled` was version
+  drift between vendored source and on-chain bytecode; resolved by checking out the matching margin
+  commit and pinning Pyth to one instance. Registry + vault shared objects live.
+- **C4 (proof bypassed Guardian's own contracts) — FIXED.** `guardian::executor::execute_protection`
+  now runs end-to-end on testnet against a real DeepBook margin manager: Pyth-refreshed in the same
+  PTB, it deleveraged debt **0.10 → 0.00 SUI**, the reduce-only invariant held, and
+  `ProtectionExecuted` was emitted (tx `6j2q7XiMY6TMEfdJhX5oLZad7JfQTUxar9iTFpE8GE8x`). The composer
+  creates a **real** `policy::create` on-chain; `scripts/protect.mjs` reproduces the full
+  policy → execute path.
 
 - **C5 (white-knight vault drain) — FIXED** (commit `1cfdfe2`). `executor::whiteknight_rescue` now
   splits seized collateral by `owner_reward_fraction = user_reward/(1+user_reward+pool_reward)`: only
