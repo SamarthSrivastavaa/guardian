@@ -10,7 +10,7 @@ const ROWS: { component: string; status: Status; notes: string }[] = [
   { component: 'Reduce-only invariant', status: 'Live',
     notes: 'Debt-monotonic postcondition enforced + tested; collateral is only ever forwarded to the manager owner.' },
   { component: 'Policy composer', status: 'Live',
-    notes: 'Deterministic NL → parameters, re-validated against the on-chain envelope (assert_thresholds). Non-custodial wallet signature today. No LLM in the loop, by design.' },
+    notes: 'Deterministic NL → parameters, re-validated against the on-chain envelope (assert_thresholds). "Confirm" creates a REAL policy on testnet via the deployed package (guardian::policy::create). No LLM in the loop, by design.' },
   { component: 'Action explainer', status: 'Live',
     notes: 'Pure template over the structured event log — reproducible from the event alone.' },
   { component: 'Walrus receipt format', status: 'Live',
@@ -25,8 +25,10 @@ const ROWS: { component: string; status: Status; notes: string }[] = [
     notes: 'Currently sample positions. Reading the connected wallet’s margin managers (logic exists in src/reader.mjs) is the next build.' },
   { component: 'Keeper loop (poll → decide → execute)', status: 'Roadmap',
     notes: 'decide() and the PTB builders exist and are unit-tested; the resilient runtime loop (polling, retry, scheduling) is not built yet.' },
-  { component: 'Guardian contract deployment', status: 'Roadmap',
-    notes: 'Localnet full-stack publish. Testnet publish is blocked by margin-package version drift (documented in the audit).' },
+  { component: 'Guardian package + policy + registry', status: 'Live',
+    notes: 'Deployed on testnet (package 0x16ba4b3c…). policy::create executed on-chain — real ProtectionPolicy created and bound to a real manager. Registry + vault shared objects live.' },
+  { component: 'Executor on testnet', status: 'Roadmap',
+    notes: 'Deployed, but the live margin pools only accept an older internal margin version (allowed_versions=[1]) while the public source links a disabled upgrade — so execute_protection runs on localnet (self-published stack, no version drift), as the design always intended.' },
 ];
 
 const order: Record<Status, number> = { Live: 0, Simulated: 1, Roadmap: 2 };

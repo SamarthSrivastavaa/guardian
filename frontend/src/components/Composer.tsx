@@ -1,6 +1,8 @@
 import { useState } from 'react';
-import { useCurrentAccount, useSignPersonalMessage } from '@mysten/dapp-kit';
+import { useCurrentAccount, useSignAndExecuteTransaction, useSuiClient } from '@mysten/dapp-kit';
+import { Transaction } from '@mysten/sui/transactions';
 import { composePolicyFromIntent, type PolicyParams } from '../lib/guardian';
+import { DEPLOYMENT, SUI_TYPE, DBUSDC_TYPE, DEMO_MANAGER, TIP_MIST, toFixedRr, suiscanTx, suiscanObj } from '../lib/deployment';
 
 const EXAMPLES = [
   'Protect this position conservatively — I sleep 11pm–7am IST',
@@ -9,36 +11,66 @@ const EXAMPLES = [
 ];
 
 const TIER_NAME = ['Sentinel · alerts only', 'Co-pilot · one-click approve', 'Autopilot · auto-execute'];
-
 const DEFAULT_INTENT = 'Balanced protection, autopilot — repay and de-risk before I get liquidated';
+const short = (a: string) => `${a.slice(0, 8)}…${a.slice(-6)}`;
 
 export function Composer() {
   const [text, setText] = useState(DEFAULT_INTENT);
   const [result, setResult] = useState<ReturnType<typeof composePolicyFromIntent> | null>(() => composePolicyFromIntent(DEFAULT_INTENT));
-  const [confirmed, setConfirmed] = useState(false);
-  const [signing, setSigning] = useState(false);
-  const [sig, setSig] = useState<string | null>(null);
+  const [managerId, setManagerId] = useState(DEMO_MANAGER);
+  const [creating, setCreating] = useState(false);
+  const [txDigest, setTxDigest] = useState<string | null>(null);
+  const [policyId, setPolicyId] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   const account = useCurrentAccount();
-  const { mutate: signPersonalMessage } = useSignPersonalMessage();
+  const client = useSuiClient();
+  const { mutate: signAndExecute } = useSignAndExecuteTransaction();
 
-  const compose = (t: string) => { setText(t); setResult(composePolicyFromIntent(t)); setConfirmed(false); setSig(null); };
+  const compose = (t: string) => { setText(t); setResult(composePolicyFromIntent(t)); reset(); };
+  const reset = () => { setTxDigest(null); setPolicyId(null); setError(null); };
 
-  const authorize = () => {
-    if (!result || !account) return;
-    // Non-custodial authorization: the wallet signs the policy envelope (the exact params the
-    // on-chain guardian::policy::create will use). Real signature, no custody, no fake tx —
-    // the signed envelope is what a keeper broadcasts once the package is live (localnet today).
-    const envelope = JSON.stringify({ kind: 'guardian.policy', owner: account.address, ...result.params });
-    setSigning(true);
-    signPersonalMessage(
-      { message: new TextEncoder().encode(envelope) },
-      {
-        onSuccess: (r) => { setSig(r.signature); setConfirmed(true); setSigning(false); },
-        onError: () => setSigning(false),
+  // Build + sign the REAL guardian::policy::create call against the deployed package. The wallet
+  // must own `managerId`. Mirrors the proven CLI tx (scripts/protect.mjs).
+  const createPolicy = () => {
+    if (!result || !account || !managerId.trim()) return;
+    reset(); setCreating(true);
+    const p = result.params;
+    const tx = new Transaction();
+    const [tip] = tx.splitCoins(tx.gas, [TIP_MIST]);
+    const tipBal = tx.moveCall({ target: '0x2::coin::into_balance', typeArguments: [SUI_TYPE], arguments: [tip] });
+    const policy = tx.moveCall({
+      target: `${DEPLOYMENT.packageId}::policy::create`,
+      typeArguments: [SUI_TYPE, DBUSDC_TYPE],
+      arguments: [
+        tx.object(managerId.trim()),
+        tx.pure.u8(p.tier),
+        tx.pure.u64(toFixedRr(p.triggerRr)),
+        tx.pure.u64(toFixedRr(p.targetRr)),
+        tx.pure.u64(p.minActionIntervalMs),
+        tipBal,
+      ],
+    });
+    tx.transferObjects([policy], account.address);
+
+    signAndExecute({ transaction: tx }, {
+      onSuccess: async (r) => {
+        setTxDigest(r.digest); setCreating(false);
+        try {
+          const res = await client.waitForTransaction({ digest: r.digest, options: { showObjectChanges: true } });
+          const pol = (res.objectChanges ?? []).find((c: any) => c.type === 'created' && c.objectType?.endsWith('::policy::ProtectionPolicy'));
+          if (pol) setPolicyId((pol as any).objectId);
+        } catch { /* digest is enough */ }
       },
-    );
+      onError: (e) => { setError(e.message || 'Transaction failed'); setCreating(false); },
+    });
   };
+
+  const btnLabel = txDigest ? '✓ Policy created on-chain'
+    : creating ? 'Creating policy…'
+    : !account ? 'Connect wallet to create'
+    : !managerId.trim() ? 'Enter a margin manager'
+    : 'Create policy on-chain';
 
   return (
     <div className="page" style={{ maxWidth: 1060, margin: '0 auto' }}>
@@ -59,7 +91,8 @@ export function Composer() {
       <div style={{ fontSize: 12, color: 'var(--faint)', margin: '14px 4px', lineHeight: 1.6 }}>
         Deterministic — your words map to <b style={{ color: 'var(--muted)' }}>parameters you confirm</b>, never actions, with no model in the loop. Every
         proposal is re-validated against the same on-chain safety envelope the contract enforces (<code>assert_thresholds</code>), so a malformed or
-        injected request can’t produce an unsafe policy.
+        injected request can’t produce an unsafe policy. <b style={{ color: 'var(--muted)' }}>Confirm</b> calls the live
+        <code> guardian::policy::create</code> on testnet.
       </div>
 
       {result && (
@@ -84,14 +117,28 @@ export function Composer() {
               <Permission text="Move any asset to an address that isn’t yours" />
               <Permission text="Increase your debt or open new leverage" />
             </ul>
-            <button className="btn btn-primary btn-lg" style={{ width: '100%', marginTop: 18 }}
-              disabled={!result.valid || !account || signing || confirmed} onClick={authorize}>
-              {confirmed ? '✓ Policy authorized' : signing ? 'Signing…' : !account ? 'Connect wallet to sign' : 'Confirm & sign policy'}
+
+            <div style={{ marginTop: 16 }}>
+              <div className="stat-label">Margin manager <span style={{ color: 'var(--faint)', textTransform: 'none' }}>· your SUI/DBUSDC manager</span></div>
+              <input className="field num" style={{ fontSize: 11.5, padding: '9px 11px', marginTop: 5 }} value={managerId}
+                onChange={(e) => { setManagerId(e.target.value); reset(); }} spellCheck={false} />
+            </div>
+
+            <button className="btn btn-primary btn-lg" style={{ width: '100%', marginTop: 14 }}
+              disabled={!result.valid || !account || creating || !managerId.trim() || !!txDigest} onClick={createPolicy}>
+              {btnLabel}
             </button>
-            {sig && (
-              <div className="mono-tag" style={{ marginTop: 10, wordBreak: 'break-all', fontSize: 10, lineHeight: 1.4,
-                border: '1.5px solid var(--safe)', padding: '8px 10px' }}>
-                <b style={{ color: 'var(--safe)' }}>signed envelope</b> · {sig.slice(0, 44)}…
+
+            {txDigest && (
+              <div className="mono-tag" style={{ marginTop: 10, fontSize: 11, lineHeight: 1.6, border: '1.5px solid var(--safe)', padding: '9px 11px' }}>
+                <b style={{ color: 'var(--safe)' }}>created on testnet</b><br />
+                <a href={suiscanTx(txDigest)} target="_blank" rel="noreferrer">tx {short(txDigest)} ↗</a>
+                {policyId && <><br /><a href={suiscanObj(policyId)} target="_blank" rel="noreferrer">policy {short(policyId)} ↗</a></>}
+              </div>
+            )}
+            {error && (
+              <div className="mono-tag" style={{ marginTop: 10, fontSize: 11, lineHeight: 1.5, border: '1.5px solid var(--danger)', color: 'var(--danger)', padding: '9px 11px', wordBreak: 'break-word' }}>
+                {error.includes('ENotManagerOwner') || error.includes('abort') ? 'This wallet does not own that margin manager (or it isn’t SUI/DBUSDC).' : error}
               </div>
             )}
             <div style={{ fontSize: 11, color: 'var(--faint)', textAlign: 'center', marginTop: 8 }}>Tier {result.params.tier} · {TIER_NAME[result.params.tier]}</div>

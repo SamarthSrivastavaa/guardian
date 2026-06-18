@@ -87,7 +87,7 @@ public fun execute_protection<B, Q>(
 
     let has_base = manager.has_base_debt();
     let debt_before = current_debt(manager, base_margin_pool, quote_margin_pool, has_base, clock);
-    let orders_before = manager.account_open_orders(pool).length();
+    let orders_before = pool.account_open_orders(manager.balance_manager()).size();
 
     // Step 1: cancel all open orders (frees locked balance into idle).
     pool_proxy::cancel_all_orders(margin_registry, manager, pool, clock, ctx);
