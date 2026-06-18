@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useCurrentAccount, useSignAndExecuteTransaction, useSuiClient } from '@mysten/dapp-kit';
 import { Transaction } from '@mysten/sui/transactions';
 import { composePolicyFromIntent, type PolicyParams } from '../lib/guardian';
@@ -26,6 +26,27 @@ export function Composer() {
   const account = useCurrentAccount();
   const client = useSuiClient();
   const { mutate: signAndExecute } = useSignAndExecuteTransaction();
+
+  // policy::create asserts the caller owns the (shared) MarginManager. Pre-check ownership so the
+  // user gets a clear inline message instead of a wallet-level "could not be processed" abort.
+  type OwnerCheck = { status: 'idle' | 'checking' | 'ok' | 'mismatch' | 'notfound' | 'badtype' | 'error'; owner?: string };
+  const [ownerCheck, setOwnerCheck] = useState<OwnerCheck>({ status: 'idle' });
+  useEffect(() => {
+    const id = managerId.trim();
+    if (!id || !account) { setOwnerCheck({ status: 'idle' }); return; }
+    let cancelled = false;
+    setOwnerCheck({ status: 'checking' });
+    client.getObject({ id, options: { showContent: true, showType: true } })
+      .then((o) => {
+        if (cancelled) return;
+        if (!o.data) { setOwnerCheck({ status: 'notfound' }); return; }
+        if (!o.data.type?.includes('::margin_manager::MarginManager')) { setOwnerCheck({ status: 'badtype' }); return; }
+        const owner = (o.data.content as any)?.fields?.owner as string | undefined;
+        setOwnerCheck(owner === account.address ? { status: 'ok', owner } : { status: 'mismatch', owner });
+      })
+      .catch(() => { if (!cancelled) setOwnerCheck({ status: 'error' }); });
+    return () => { cancelled = true; };
+  }, [managerId, account?.address, client]);
 
   const compose = (t: string) => { setText(t); setResult(composePolicyFromIntent(t)); reset(); };
   const reset = () => { setTxDigest(null); setPolicyId(null); setError(null); };
@@ -70,6 +91,11 @@ export function Composer() {
     : creating ? 'Creating policy…'
     : !account ? 'Connect wallet to create'
     : !managerId.trim() ? 'Enter a margin manager'
+    : ownerCheck.status === 'checking' ? 'Checking manager…'
+    : ownerCheck.status === 'notfound' ? 'Manager not found on testnet'
+    : ownerCheck.status === 'badtype' ? 'Not a margin manager object'
+    : ownerCheck.status === 'mismatch' ? 'Connect the wallet that owns this manager'
+    : ownerCheck.status === 'error' ? 'Could not read manager'
     : 'Create policy on-chain';
 
   return (
@@ -122,10 +148,22 @@ export function Composer() {
               <div className="stat-label">Margin manager <span style={{ color: 'var(--faint)', textTransform: 'none' }}>· your SUI/DBUSDC manager</span></div>
               <input className="field num" style={{ fontSize: 11.5, padding: '9px 11px', marginTop: 5 }} value={managerId}
                 onChange={(e) => { setManagerId(e.target.value); reset(); }} spellCheck={false} />
+              {account && ownerCheck.status === 'ok' && (
+                <div style={{ fontSize: 11, color: 'var(--safe)', marginTop: 5 }}>✓ This wallet owns this manager</div>
+              )}
+              {account && ownerCheck.status === 'mismatch' && (
+                <div style={{ fontSize: 11, color: 'var(--danger)', marginTop: 5, lineHeight: 1.5 }}>
+                  Owned by {ownerCheck.owner ? short(ownerCheck.owner) : 'another address'} — connect that wallet, or paste a
+                  manager this wallet owns. Guardian only binds a policy to a manager you control.
+                </div>
+              )}
+              {account && ownerCheck.status === 'notfound' && (
+                <div style={{ fontSize: 11, color: 'var(--danger)', marginTop: 5 }}>No object with this id on testnet.</div>
+              )}
             </div>
 
             <button className="btn btn-primary btn-lg" style={{ width: '100%', marginTop: 14 }}
-              disabled={!result.valid || !account || creating || !managerId.trim() || !!txDigest} onClick={createPolicy}>
+              disabled={!result.valid || !account || creating || !managerId.trim() || !!txDigest || (!!account && ownerCheck.status !== 'ok')} onClick={createPolicy}>
               {btnLabel}
             </button>
 
