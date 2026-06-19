@@ -36,6 +36,19 @@ export function loadKeypair() {
   return Ed25519Keypair.deriveKeypair(m[1]);
 }
 
+/**
+ * Load the KEEPER keypair (the bot that broadcasts permissionless white-knight rescues + relays
+ * envelopes). Prefers GUARDIAN_KEEPER_MNEMONIC so the keeper is a distinct, least-privilege wallet;
+ * falls back to the dev key for local demos. The keeper never holds user funds or owner authority.
+ */
+export function loadKeeperKeypair() {
+  const env = readFileSync(join(__dirname, '..', '.env'), 'utf8');
+  const secret = env.match(/GUARDIAN_KEEPER_SECRET="([^"]+)"/);
+  if (secret) return Ed25519Keypair.fromSecretKey(secret[1]);
+  const mn = env.match(/GUARDIAN_KEEPER_MNEMONIC="([^"]+)"/);
+  return mn ? Ed25519Keypair.deriveKeypair(mn[1]) : loadKeypair();
+}
+
 export function makeSuiClient() {
   return new SuiJsonRpcClient({ url: RPC_URL, network: NETWORK });
 }

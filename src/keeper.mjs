@@ -46,35 +46,52 @@ export function decide(state, policy) {
 
   // Trigger gate mirrors the on-chain executor guard: act only when RR < trigger_rr.
   const triggered = riskRatio != null && riskRatio < policy.triggerRr;
+  // A non-finite GRS (e.g. degenerate same-asset position) must never escalate: the hard RR gates
+  // above already cover real danger, so a broken soft score falls back to SAFE/SLEEP, never NOTIFY.
+  const grsOk = Number.isFinite(g.grs);
+  const band = grsOk ? g.band : 'SAFE';
 
   let action;
   if (state.debtSide === 'none' || riskRatio == null) action = ACTIONS.SLEEP;
   else if (triggered) action = ACTIONS.PROTECT;
-  else if (g.band === 'WATCH' || g.band === 'PROTECT' || g.band === 'EMERGENCY') action = ACTIONS.NOTIFY;
+  else if (grsOk && (band === 'WATCH' || band === 'PROTECT' || band === 'EMERGENCY')) action = ACTIONS.NOTIFY;
   else action = ACTIONS.SLEEP;
 
-  return { action, grs: g.grs, band: g.band, riskRatio,
-    reason: reasonFor(action, riskRatio, policy.triggerRr, g) };
+  return { action, grs: grsOk ? g.grs : null, band, riskRatio,
+    reason: reasonFor(action, riskRatio, policy.triggerRr, { ...g, band }) };
 }
 
 function reasonFor(action, rr, trigger, g) {
+  const grs = Number.isFinite(g.grs) ? g.grs.toFixed(0) : 'n/a';
   switch (action) {
-    case ACTIONS.PROTECT: return `RR ${fmt(rr)} < trigger ${fmt(trigger)} (GRS ${g.grs.toFixed(0)}) — deleverage ladder`;
-    case ACTIONS.NOTIFY: return `GRS ${g.grs.toFixed(0)} [${g.band}] — alert + narrate, no execution yet`;
-    default: return `GRS ${g.grs.toFixed(0)} [${g.band}] — safe`;
+    case ACTIONS.PROTECT: return `RR ${fmt(rr)} < trigger ${fmt(trigger)} (GRS ${grs}) — deleverage ladder`;
+    case ACTIONS.NOTIFY: return `GRS ${grs} [${g.band}] — alert + narrate, no execution yet`;
+    default: return `RR ${fmt(rr)} healthy [${g.band}] — safe`;
   }
 }
-const fmt = (x) => x >= 1000 ? '∞' : x.toFixed(4);
+const fmt = (x) => x == null ? '—' : x >= 1000 ? '∞' : x.toFixed(4);
 
 // ── PTB construction (parameterized by deployed guardian package id) ─────────
 const SUI_DEC = 1_000_000_000;
 const toFixedRr = (decimal) => Math.round(decimal * SUI_DEC); // decimal RR → 9-dec fixed point
 
+/** A standalone Pyth-refresh PTB (keeper-signed, just-in-time before broadcasting an envelope). */
+export async function buildRefreshTx(coinKeys = ['SUI', 'DBUSDC']) {
+  const client = makeSuiClient();
+  const tx = new Transaction();
+  await refreshPyth(tx, client, coinKeys);
+  return tx;
+}
+
 /**
- * Build the execute_protection PTB (ladder steps 1-2), Pyth-refreshed.
+ * Build the execute_protection PTB (ladder steps 1-2).
+ * @param withRefresh  true (default) embeds a Pyth refresh for atomic same-PTB execution (keeper
+ *   co-pilot / immediate broadcast). false produces an EXECUTE-ONLY tx for a pre-signed envelope:
+ *   the on-chain Pyth must be refreshed just-in-time by the keeper (buildRefreshTx) right before,
+ *   so a long-lived owner signature never carries a stale baked VAA.
  * Requires the deployed guardian package id + the on-chain object ids.
  */
-export async function buildProtectionTx({ pkg, policyId, managerId, guardianRegistryId, poolKey = 'SUI_DBUSDC' }) {
+export async function buildProtectionTx({ pkg, policyId, managerId, guardianRegistryId, poolKey = 'SUI_DBUSDC', withRefresh = true }) {
   const client = makeSuiClient();
   const pool = testnetPools[poolKey];
   const baseCoin = testnetCoins[pool.baseCoin];
@@ -83,7 +100,7 @@ export async function buildProtectionTx({ pkg, policyId, managerId, guardianRegi
   const quoteMarginPool = testnetMarginPools[pool.quoteCoin];
 
   const tx = new Transaction();
-  await refreshPyth(tx, client, [pool.baseCoin, pool.quoteCoin]);
+  if (withRefresh) await refreshPyth(tx, client, [pool.baseCoin, pool.quoteCoin]);
   tx.moveCall({
     target: `${pkg}::executor::execute_protection`,
     typeArguments: [baseCoin.type, quoteCoin.type],

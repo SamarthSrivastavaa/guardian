@@ -4,8 +4,9 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "test": "node --test test/risk.test.mjs test/keeper.test.mjs test/ai.test.mjs",
+    "test": "node --test test/risk.test.mjs test/keeper.test.mjs test/ai.test.mjs test/daemon.test.mjs",
     "read": "node scripts/guardian.mjs read",
+    "keeper": "node scripts/keeper.mjs",
     "backtest": "node scripts/backtest.mjs"
   },
   "keywords": [],

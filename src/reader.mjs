@@ -62,17 +62,22 @@ export async function readManagerState(managerId, { poolKey = 'SUI_DBUSDC' } = {
   const baseCoin = testnetCoins[pool.baseCoin];
   const quoteCoin = testnetCoins[pool.quoteCoin];
 
-  // 1) Oracle-free on-chain reads (no Pyth dependency).
-  const [assets, hasBaseDebt, debts, marginPoolId] = await Promise.all([
+  // 1) Oracle-free on-chain reads (no Pyth dependency). `calculate_debts` aborts for a manager
+  //    with no active loan (margin_pool_id cleared, e.g. fully deleveraged), so gate the debt read
+  //    on there being a margin pool — a no-debt manager reads cleanly as debtSide 'none'.
+  const [assets, hasBaseDebt, marginPoolId] = await Promise.all([
     dbc.getMarginManagerAssets('TARGET', 9),
     dbc.getMarginManagerHasBaseDebt('TARGET'),
-    dbc.getMarginManagerDebts('TARGET', 9),
     dbc.getMarginManagerMarginPoolId('TARGET'),
   ]);
+  let baseDebt = 0, quoteDebt = 0;
+  if (marginPoolId != null) {
+    const debts = await dbc.getMarginManagerDebts('TARGET', 9).catch(() => ({ baseDebt: 0, quoteDebt: 0 }));
+    baseDebt = Number(debts.baseDebt);
+    quoteDebt = Number(debts.quoteDebt);
+  }
   const baseAsset = Number(assets.baseAsset);
   const quoteAsset = Number(assets.quoteAsset);
-  const baseDebt = Number(debts.baseDebt);
-  const quoteDebt = Number(debts.quoteDebt);
   const debtSide = marginPoolId == null ? 'none' : hasBaseDebt ? 'base' : 'quote';
 
   // 2) Fresh prices (Hermes-beta) + on-chain Pyth ages (execution readiness).
