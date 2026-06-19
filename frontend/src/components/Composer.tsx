@@ -1,9 +1,12 @@
 import { useState, useEffect } from 'react';
-import { useCurrentAccount, useSignAndExecuteTransaction, useSuiClient } from '@mysten/dapp-kit';
+import { useCurrentAccount, useSignAndExecuteTransaction, useSignTransaction, useSuiClient } from '@mysten/dapp-kit';
 import { Transaction } from '@mysten/sui/transactions';
 import { composePolicyFromIntent, type PolicyParams } from '../lib/guardian';
 import { DEPLOYMENT, SUI_TYPE, DBUSDC_TYPE, DEMO_MANAGER, TIP_MIST, toFixedRr, suiscanTx, suiscanObj } from '../lib/deployment';
-import { buildCreateManagerTx, managerIdFromEvents } from '../lib/deepbook';
+import { buildCreateManagerTx, managerIdFromEvents, getOwnedManagerIds } from '../lib/deepbook';
+import { buildReserveGasTx, buildEnvelopeTx, postEnvelope, RESERVE_GAS_MIST } from '../lib/autopilot';
+
+type ApStatus = 'idle' | 'reserving' | 'signing' | 'posting' | 'on' | 'error';
 
 const EXAMPLES = [
   'Protect this position conservatively — I sleep 11pm–7am IST',
@@ -25,10 +28,13 @@ export function Composer() {
   const [error, setError] = useState<string | null>(null);
   const [mgrCreating, setMgrCreating] = useState(false);
   const [mgrError, setMgrError] = useState<string | null>(null);
+  const [apStatus, setApStatus] = useState<ApStatus>('idle');
+  const [apError, setApError] = useState<string | null>(null);
 
   const account = useCurrentAccount();
   const client = useSuiClient();
-  const { mutate: signAndExecute } = useSignAndExecuteTransaction();
+  const { mutate: signAndExecute, mutateAsync: signAndExecuteAsync } = useSignAndExecuteTransaction();
+  const { mutateAsync: signTransaction } = useSignTransaction();
 
   // policy::create asserts the caller owns the (shared) MarginManager. Pre-check ownership so the
   // user gets a clear inline message instead of a wallet-level "could not be processed" abort.
@@ -51,8 +57,23 @@ export function Composer() {
     return () => { cancelled = true; };
   }, [managerId, account?.address, client]);
 
+  // On connect, discover a margin manager this wallet already owns and prefill it — so a returning
+  // user never gets asked to create a second one. Only replaces the demo default / empty field;
+  // never clobbers a manager the user typed or just created.
+  useEffect(() => {
+    if (!account) return;
+    let cancelled = false;
+    getOwnedManagerIds(client, account.address).then((ids) => {
+      if (cancelled) return;
+      // Replace only the demo default / empty field: own one → prefill it; own none → clear the
+      // demo manager so the user just sees "create one" instead of a foreign-owner mismatch.
+      setManagerId((cur) => (cur !== DEMO_MANAGER && cur.trim() ? cur : ids[0] ?? ''));
+    });
+    return () => { cancelled = true; };
+  }, [account?.address, client]);
+
   const compose = (t: string) => { setText(t); setResult(composePolicyFromIntent(t)); reset(); };
-  const reset = () => { setTxDigest(null); setPolicyId(null); setError(null); };
+  const reset = () => { setTxDigest(null); setPolicyId(null); setError(null); setApStatus('idle'); setApError(null); };
 
   // Build + sign the REAL guardian::policy::create call against the deployed package. The wallet
   // must own `managerId`. Mirrors the proven CLI tx (scripts/protect.mjs).
@@ -114,6 +135,33 @@ export function Composer() {
         setMgrCreating(false);
       },
     });
+  };
+
+  // Enable autopilot: reserve a dedicated gas coin, sign an EXECUTE-ONLY envelope (sign-only), and
+  // POST it to the keeper, which verifies before storing. Owner key never leaves the wallet.
+  const enableAutopilot = async () => {
+    if (!account || !policyId) return;
+    setApError(null); setApStatus('reserving');
+    try {
+      const reserve = await signAndExecuteAsync({ transaction: buildReserveGasTx(account.address) });
+      await client.waitForTransaction({ digest: reserve.digest });
+      const coins = (await client.getCoins({ owner: account.address })).data;
+      const reserved = coins.find((c) => c.balance === String(RESERVE_GAS_MIST)) ?? [...coins].sort((a, b) => Number(a.balance) - Number(b.balance))[0];
+      if (!reserved) throw new Error('could not reserve a gas coin');
+      const obj = await client.getObject({ id: reserved.coinObjectId });
+      const gas = { objectId: obj.data!.objectId, version: String(obj.data!.version), digest: obj.data!.digest };
+
+      setApStatus('signing');
+      const tx = buildEnvelopeTx({ owner: account.address, policyId, managerId: managerId.trim(), gas });
+      const signed = await signTransaction({ transaction: tx });
+
+      setApStatus('posting');
+      const out = await postEnvelope({ policyId, owner: account.address, gasObjectId: gas.objectId, txBytes: signed.bytes, signature: signed.signature, expiresAt: Date.now() + 24 * 3600_000 });
+      if (out.ok) setApStatus('on');
+      else { setApStatus('error'); setApError(out.error ?? 'keeper rejected the envelope'); }
+    } catch (e) {
+      setApStatus('error'); setApError(e instanceof Error ? e.message : 'autopilot enrollment failed');
+    }
   };
 
   const btnLabel = txDigest ? '✓ Policy created on-chain'
@@ -215,6 +263,26 @@ export function Composer() {
                 <a href={suiscanTx(txDigest)} target="_blank" rel="noreferrer">tx {short(txDigest)} ↗</a>
                 {policyId && <><br /><a href={suiscanObj(policyId)} target="_blank" rel="noreferrer">policy {short(policyId)} ↗</a></>}
               </div>
+            )}
+
+            {/* Tier-2 policies can enable unattended autopilot via a non-custodial pre-signed envelope. */}
+            {txDigest && policyId && result.params.tier === 2 && (
+              apStatus === 'on' ? (
+                <div className="mono-tag" style={{ marginTop: 8, fontSize: 11, lineHeight: 1.6, border: '1.5px solid var(--safe)', color: 'var(--safe)', padding: '9px 11px' }}>
+                  ⚡ <b>Autopilot enabled.</b> The keeper will deleverage you before liquidation — no further signing. Your key never left your wallet.
+                </div>
+              ) : (
+                <div style={{ marginTop: 8 }}>
+                  <button className="btn btn-primary btn-lg" style={{ width: '100%' }}
+                    disabled={apStatus === 'reserving' || apStatus === 'signing' || apStatus === 'posting'} onClick={enableAutopilot}>
+                    {apStatus === 'reserving' ? 'Reserving gas…' : apStatus === 'signing' ? 'Sign the autopilot envelope…' : apStatus === 'posting' ? 'Enrolling with keeper…' : '⚡ Enable autopilot (sign once)'}
+                  </button>
+                  <div style={{ fontSize: 10.5, color: 'var(--faint)', marginTop: 5, lineHeight: 1.5 }}>
+                    Sign one execute-only transaction now; the keeper relays it the moment your risk hits the trigger. Non-custodial — the keeper holds no authority and the tx still passes every on-chain guard.
+                  </div>
+                  {apError && <div className="mono-tag" style={{ marginTop: 6, fontSize: 11, lineHeight: 1.5, border: '1.5px solid var(--danger)', color: 'var(--danger)', padding: '8px 11px', wordBreak: 'break-word' }}>{apError}</div>}
+                </div>
+              )
             )}
             {error && (
               <div className="mono-tag" style={{ marginTop: 10, fontSize: 11, lineHeight: 1.5, border: '1.5px solid var(--danger)', color: 'var(--danger)', padding: '9px 11px', wordBreak: 'break-word' }}>

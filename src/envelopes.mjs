@@ -17,6 +17,8 @@ import { readFileSync, writeFileSync, existsSync, mkdirSync, rmSync, readdirSync
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { Transaction } from '@mysten/sui/transactions';
+import { verifyTransactionSignature } from '@mysten/sui/verify';
+import { fromBase64 } from '@mysten/sui/utils';
 import { makeSuiClient, MARGIN_REGISTRY_ID, testnetCoins, testnetPools, testnetMarginPools } from './config.mjs';
 import { buildRefreshTx } from './keeper.mjs';
 
@@ -67,19 +69,62 @@ export async function signAndStoreEnvelope(ownerKeypair, meta, { expiresInMs = 2
   const tx = await buildEnvelopeTx({ ...meta, owner: ownerKeypair.toSuiAddress() });
   const bytes = await tx.build({ client });
   const { signature } = await ownerKeypair.signTransaction(bytes);
+  return storeEnvelopeRecord({
+    policyId: meta.policyId, owner: ownerKeypair.toSuiAddress(), gasObjectId: meta.gasObjectId,
+    txBytes: Buffer.from(bytes).toString('base64'), signature,
+    createdAt: Date.now(), expiresAt: Date.now() + expiresInMs,
+  });
+}
+
+/**
+ * Verify an externally-signed envelope (e.g. from the browser) BEFORE storing it. The keeper must
+ * never relay arbitrary bytes, so we require, in order:
+ *   1) a valid signature over the bytes by the claimed owner (forgery-proof),
+ *   2) tx sender == owner and a moveCall to `${pkg}::executor::execute_protection` (intent),
+ *   3) the named policy is on-chain, active, tier-2, and owned by the signer (authorization).
+ */
+export async function verifyEnvelope(rec, { pkg, client = makeSuiClient() } = {}) {
+  if (!rec?.txBytes || !rec?.signature || !rec?.owner || !rec?.policyId) return { ok: false, error: 'missing fields' };
+  if (rec.expiresAt && Date.now() > rec.expiresAt) return { ok: false, error: 'expired' };
+
+  let bytes;
+  try { bytes = fromBase64(rec.txBytes); } catch { return { ok: false, error: 'bad txBytes' }; }
+  let pub;
+  try { pub = await verifyTransactionSignature(bytes, rec.signature); }
+  catch { return { ok: false, error: 'invalid signature' }; }
+  if (pub.toSuiAddress() !== rec.owner) return { ok: false, error: 'signature does not match owner' };
+
+  try {
+    const data = Transaction.from(bytes).getData();
+    if (data.sender && data.sender !== rec.owner) return { ok: false, error: 'tx sender != owner' };
+    const calls = (data.commands ?? []).map((c) => c.MoveCall ?? (c.$kind === 'MoveCall' ? c : null)).filter(Boolean);
+    const hit = calls.some((c) => c.module === 'executor' && c.function === 'execute_protection' && (!pkg || c.package === pkg));
+    if (!hit) return { ok: false, error: 'tx is not an execute_protection call' };
+  } catch { return { ok: false, error: 'unparseable tx' }; }
+
+  try {
+    const o = await client.getObject({ id: rec.policyId, options: { showContent: true } });
+    const f = o.data?.content?.fields;
+    if (!f) return { ok: false, error: 'policy not found' };
+    if (f.owner !== rec.owner) return { ok: false, error: 'policy not owned by signer' };
+    if (Number(f.tier) !== 2) return { ok: false, error: 'policy is not tier-2 (autopilot)' };
+    if (!f.active) return { ok: false, error: 'policy inactive' };
+  } catch (e) { return { ok: false, error: `policy check failed: ${e.message ?? e}` }; }
+
+  return { ok: true };
+}
+
+/** Persist an envelope record (single source of the on-disk schema). */
+export function storeEnvelopeRecord(rec) {
   if (!existsSync(STORE)) mkdirSync(STORE, { recursive: true });
-  const rec = {
+  const out = {
     version: 'guardian.envelope.v1',
-    policyId: meta.policyId,
-    owner: ownerKeypair.toSuiAddress(),
-    gasObjectId: meta.gasObjectId,
-    txBytes: Buffer.from(bytes).toString('base64'),
-    signature,
-    createdAt: Date.now(),
-    expiresAt: Date.now() + expiresInMs,
+    policyId: rec.policyId, owner: rec.owner, gasObjectId: rec.gasObjectId ?? null,
+    txBytes: rec.txBytes, signature: rec.signature,
+    createdAt: rec.createdAt ?? Date.now(), expiresAt: rec.expiresAt ?? Date.now() + 24 * 3600_000,
   };
-  writeFileSync(envPath(meta.policyId), JSON.stringify(rec, null, 2));
-  return rec;
+  writeFileSync(envPath(rec.policyId), JSON.stringify(out, null, 2));
+  return out;
 }
 
 /** Load a live (non-expired) envelope for a policy, or null. */

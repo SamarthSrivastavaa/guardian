@@ -3,8 +3,14 @@
 //   GUARDIAN_POLL_MS=5000 node scripts/keeper.mjs
 import { readFileSync } from 'node:fs';
 import { runDaemon } from '../src/daemon.mjs';
+import { startEnvelopeServer } from '../src/keeper-server.mjs';
 
 const D = JSON.parse(readFileSync(new URL('../deployment.testnet.json', import.meta.url)));
+
+// Intake server for in-app "Enable autopilot" (browser POSTs a verified, owner-signed envelope).
+if (process.env.GUARDIAN_SERVER !== 'off') {
+  startEnvelopeServer({ pkg: D.packageId, port: Number(process.env.GUARDIAN_SERVER_PORT ?? 8787) });
+}
 
 runDaemon({
   pkg: D.packageId,

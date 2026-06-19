@@ -22,6 +22,12 @@ export function buildCreateManagerTx(client: SuiJsonRpcClient, address: string):
   return tx;
 }
 
+/** Margin manager ids this wallet already owns (so we never ask a user to create a second one). */
+export async function getOwnedManagerIds(client: SuiJsonRpcClient, owner: string): Promise<string[]> {
+  try { return await makeDbc(client, owner).getMarginManagerIdsForOwner(owner); }
+  catch { return []; }
+}
+
 /** Pull the new manager id out of the MarginManagerCreatedEvent in a tx result. */
 export function managerIdFromEvents(events: { type: string; parsedJson?: unknown }[] | undefined): string | null {
   const ev = (events ?? []).find((e) => e.type.endsWith(MANAGER_CREATED_EVENT));
