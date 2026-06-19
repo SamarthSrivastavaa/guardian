@@ -1,0 +1,19 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(node -e \"import\\('./src/writer.mjs'\\).then\\(async m=>{await m.depositAndBorrowBase\\('0x3a209d3a12e3d44f62d048579ef73b0a82dc05d2687f2311f4c70750ed5812d5',{depositSui:0.1,borrowSui:0.1}\\);}\\).catch\\(e=>{console.error\\(e.message||e\\);process.exit\\(1\\)}\\)\")",
+      "Bash(git commit *)",
+      "Bash(node -e ' *)",
+      "Bash(node -e \"console.log\\(require\\('./node_modules/@mysten/deepbook-v3/package.json'\\).version\\)\")",
+      "Bash(cd /c/Users/HP/OneDrive/Desktop/guardian *)",
+      "Bash(npm install *)",
+      "Bash(node -e \"const p=require\\('@mysten/sui/package.json'\\); console.log\\('sui', p.version\\)\")",
+      "Bash(node scripts/prove-autopilot.mjs)",
+      "Bash(npm test *)",
+      "Bash(GUARDIAN_POLL_MS=4000 timeout 16 node scripts/keeper.mjs)"
+    ],
+    "additionalDirectories": [
+      "C:\\Users\\HP\\OneDrive\\Desktop\\guardian\\node_modules\\@mysten\\deepbook-v3\\dist\\transactions"
+    ]
+  }
+}

@@ -15,6 +15,7 @@ import { decide, ACTIONS, buildProtectionTx, buildWhiteKnightTx } from './keeper
 import { readManagerState } from './reader.mjs';
 import { makeSuiClient, loadKeeperKeypair, testnetCoins, testnetPools } from './config.mjs';
 import { loadEnvelope, broadcastEnvelope } from './envelopes.mjs';
+import { anchorReceipt, receiptFromEvent } from './walrus.mjs';
 
 const FLOAT = 1_000_000_000;
 
@@ -202,8 +203,21 @@ async function handlePolicy({ client, keeper, keeperAddr, cfg, entry, gasOk, inF
       digest = await broadcastWhiteKnight({ client, keeper, cfg, entry, state });
       log('info', { event: 'executed', kind: 'white-knight', policyId: entry.policyId, digest });
     }
+    if (digest) await anchor({ client, entry, digest });
   } finally {
     inFlight.delete(entry.policyId);
+  }
+}
+
+/** Best-effort: read the executor event from the tx and anchor a Walrus receipt for it. */
+async function anchor({ client, entry, digest }) {
+  try {
+    const r = await client.waitForTransaction({ digest, options: { showEvents: true } });
+    const event = (r.events ?? []).find((e) => e.type.includes('::executor::'));
+    const { blobId, url } = await anchorReceipt(receiptFromEvent({ policyId: entry.policyId, managerId: entry.managerId, owner: entry.owner, digest, event }));
+    log('info', { event: 'anchored', policyId: entry.policyId, blobId, url });
+  } catch (e) {
+    log('warn', { event: 'anchor-failed', policyId: entry.policyId, digest, msg: String(e.message ?? e) });
   }
 }
 

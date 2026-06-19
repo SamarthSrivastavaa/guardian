@@ -1,11 +1,10 @@
 // Anchor a Guardian rescue receipt to Walrus testnet → permanent, verifiable blob URL.
 // Each receipt is the structured rescue event (the same data the explainer narrates) so anyone can
-// independently verify a non-custodial protection actually fired. This is the legitimate Walrus
-// use case: tamper-evident proof of an on-chain action, stored off-chain with a stable URL.
+// independently verify a non-custodial protection actually fired. The keeper anchors these
+// automatically after every action (src/daemon.mjs → src/walrus.mjs); this script anchors samples.
 //
 // Usage: node scripts/walrus-anchor.mjs   (anchors the sample receipts below, prints blob URLs)
-const PUBLISHER = 'https://publisher.walrus-testnet.walrus.space/v1/blobs?epochs=10';
-const AGGREGATOR = 'https://aggregator.walrus-testnet.walrus.space/v1/blobs';
+import { anchorReceipt } from '../src/walrus.mjs';
 
 const RECEIPTS = [
   {
@@ -22,18 +21,9 @@ const RECEIPTS = [
   },
 ];
 
-async function anchor(receipt) {
-  const body = JSON.stringify({ schema: 'guardian.rescue.v1', ...receipt });
-  const res = await fetch(PUBLISHER, { method: 'PUT', body });
-  if (!res.ok) throw new Error(`Walrus ${res.status}: ${await res.text()}`);
-  const out = await res.json();
-  const blobId = out.newlyCreated?.blobObject?.blobId ?? out.alreadyCertified?.blobId;
-  return { blobId, url: `${AGGREGATOR}/${blobId}` };
-}
-
 for (const r of RECEIPTS) {
   try {
-    const { blobId, url } = await anchor(r);
+    const { blobId, url } = await anchorReceipt(r);
     console.log(`${r.kind.padEnd(20)} blobId=${blobId}`);
     console.log(`  ${url}`);
   } catch (e) {

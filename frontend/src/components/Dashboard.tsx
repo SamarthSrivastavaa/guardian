@@ -1,6 +1,9 @@
+import { useEffect, useState } from 'react';
+import { useCurrentAccount, useSuiClient } from '@mysten/dapp-kit';
 import { Gauge } from './Gauge';
 import { DemoBanner } from './DemoBanner';
-import { POSITIONS } from '../lib/positions';
+import { POSITIONS, type Position } from '../lib/positions';
+import { readLivePositions } from '../lib/liveReader';
 import { guardianRiskScore, liquidationPrice, riskRatio, bandColor, explainEvent } from '../lib/guardian';
 
 const f = (n: number, d = 4) => (isFinite(n) ? n.toFixed(d) : '∞');
@@ -13,7 +16,25 @@ const FEED = [
 ];
 
 export function Dashboard() {
-  const rows = POSITIONS.map((p) => {
+  const account = useCurrentAccount();
+  const client = useSuiClient();
+  const [live, setLive] = useState<Position[] | null>(null);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (!account) { setLive(null); return; }
+    let cancelled = false;
+    setLoading(true);
+    readLivePositions(client, account.address)
+      .then((ps) => { if (!cancelled) setLive(ps); })
+      .catch(() => { if (!cancelled) setLive([]); })
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
+  }, [account?.address, client]);
+
+  const isLive = !!account && !!live && live.length > 0;
+  const source = isLive ? (live as Position[]) : POSITIONS;
+  const rows = source.map((p) => {
     const r = guardianRiskScore(p);
     const pLiq = liquidationPrice(p.side, p.baseAsset, p.quoteAsset, p.debt, p.rrLiq);
     const rr = riskRatio(p.side, p.baseAsset, p.quoteAsset, p.debt, p.markPrice);
@@ -24,10 +45,14 @@ export function Dashboard() {
 
   return (
     <div className="page">
-      <DemoBanner text="Sample positions — every number here is computed by Guardian's real risk engine; live chain reads ship after audit." />
+      {isLive ? (
+        <DemoBanner tone="live" text={`Live testnet reads — ${source.length} margin manager${source.length === 1 ? '' : 's'} owned by your wallet. Balances, debt & risk ratio are live chain + oracle reads; vol/rate inputs use modeled defaults.`} />
+      ) : (
+        <DemoBanner text={loading ? 'Reading your wallet’s margin managers from testnet…' : account ? 'No margin managers on this wallet yet — showing sample positions. Create one in the composer to see it live here.' : 'Sample positions — every number is computed by Guardian’s real risk engine. Connect a wallet to read your live managers.'} />
+      )}
       {/* stats strip */}
       <div className="grid" style={{ gridTemplateColumns: 'repeat(5, 1fr)', marginBottom: 16 }}>
-        <Stat label="Protected" value={String(POSITIONS.length)} suffix="managers" />
+        <Stat label="Protected" value={String(source.length)} suffix="managers" />
         <Stat label="Portfolio risk" value={String(Math.round(worst.r.grs))} suffix={worst.r.band} accent={bandColor[worst.r.band]} />
         <Stat label="Lowest RR" value={f(Math.min(...rows.map((x) => x.rr)), 3)} mono />
         <Stat label="Worst 24h breach P" value={`${(Math.max(...rows.map((x) => x.r.pBreach24h)) * 100).toFixed(1)}%`} mono />

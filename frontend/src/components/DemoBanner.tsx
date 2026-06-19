@@ -1,9 +1,9 @@
-/// Honest data-provenance banner. Dashboard / Saves Wall / Lenders render curated demo data; the
-/// numbers are computed by Guardian's real risk engine, but the *positions* are samples, not live
-/// chain reads. We state that plainly rather than imply live data.
-export function DemoBanner({ text }: { text: string }) {
+/// Data-provenance banner. Dashboard / Saves Wall / Lenders render curated demo data by default;
+/// the numbers are computed by Guardian's real risk engine, but the *positions* are samples. When a
+/// wallet is connected and real managers are read, the Dashboard switches this to a `live` tone.
+export function DemoBanner({ text, tone = 'demo' }: { text: string; tone?: 'demo' | 'live' }) {
   return (
-    <div className="demo-banner">
+    <div className={`demo-banner${tone === 'live' ? ' live' : ''}`}>
       <span className="demo-dot" />
       {text}
     </div>

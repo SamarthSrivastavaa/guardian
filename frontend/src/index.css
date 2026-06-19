@@ -202,6 +202,9 @@ textarea, input { font-family: inherit; }
   border: 2px dashed var(--ink); background: repeating-linear-gradient(45deg, transparent, transparent 9px, rgba(0,0,0,0.025) 9px, rgba(0,0,0,0.025) 18px);
   font-size: 12.5px; font-weight: 700; color: var(--ink); letter-spacing: -0.01em;
 }
+.demo-banner.live { border-style: solid; border-color: var(--safe); background: var(--safe-dim); }
+.demo-banner.live .demo-dot { background: var(--safe); animation: livePulse 1.6s ease-in-out infinite; }
+@keyframes livePulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
 .demo-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--accent); border: 1.5px solid var(--ink); flex: none; }
 .sim-caption {
   display: flex; align-items: center; gap: 9px; padding: 9px 14px; margin-bottom: 12px;
