@@ -3,6 +3,7 @@ import { useCurrentAccount, useSignAndExecuteTransaction, useSuiClient } from '@
 import { Transaction } from '@mysten/sui/transactions';
 import { composePolicyFromIntent, type PolicyParams } from '../lib/guardian';
 import { DEPLOYMENT, SUI_TYPE, DBUSDC_TYPE, DEMO_MANAGER, TIP_MIST, toFixedRr, suiscanTx, suiscanObj } from '../lib/deployment';
+import { buildCreateManagerTx, managerIdFromEvents } from '../lib/deepbook';
 
 const EXAMPLES = [
   'Protect this position conservatively — I sleep 11pm–7am IST',
@@ -22,6 +23,8 @@ export function Composer() {
   const [txDigest, setTxDigest] = useState<string | null>(null);
   const [policyId, setPolicyId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [mgrCreating, setMgrCreating] = useState(false);
+  const [mgrError, setMgrError] = useState<string | null>(null);
 
   const account = useCurrentAccount();
   const client = useSuiClient();
@@ -84,6 +87,32 @@ export function Composer() {
         } catch { /* digest is enough */ }
       },
       onError: (e) => { setError(e.message || 'Transaction failed'); setCreating(false); },
+    });
+  };
+
+  // Permanent onboarding: mint a MarginManager the connected wallet owns, so anyone — not just the
+  // dev wallet — can bind a policy. On success we auto-fill the new manager id (ownership check → ✓).
+  const createManager = () => {
+    if (!account) return;
+    setMgrError(null); setMgrCreating(true);
+    const tx = buildCreateManagerTx(client, account.address);
+    signAndExecute({ transaction: tx }, {
+      onSuccess: async (r) => {
+        try {
+          const res = await client.waitForTransaction({ digest: r.digest, options: { showEvents: true } });
+          const id = managerIdFromEvents(res.events as any);
+          if (id) { setManagerId(id); reset(); }
+          else setMgrError('Manager created — refresh your objects and paste its id.');
+        } catch { setMgrError('Manager created — confirming on-chain, paste its id if it doesn’t fill.'); }
+        setMgrCreating(false);
+      },
+      onError: (e) => {
+        const m = e.message || '';
+        setMgrError(/gas|insufficient|balance|no valid/i.test(m)
+          ? 'Your wallet needs a little testnet SUI for gas — get some at faucet.sui.io, then retry.'
+          : (m || 'Could not create manager'));
+        setMgrCreating(false);
+      },
     });
   };
 
@@ -159,6 +188,19 @@ export function Composer() {
               )}
               {account && ownerCheck.status === 'notfound' && (
                 <div style={{ fontSize: 11, color: 'var(--danger)', marginTop: 5 }}>No object with this id on testnet.</div>
+              )}
+
+              {account && ownerCheck.status !== 'ok' && ownerCheck.status !== 'checking' && (
+                <div style={{ marginTop: 9, paddingTop: 9, borderTop: '1px dashed var(--line, #e5e5e5)' }}>
+                  <button className="btn btn-ghost" style={{ fontSize: 11.5, padding: '8px 11px', width: '100%', fontWeight: 600 }}
+                    disabled={mgrCreating} onClick={createManager}>
+                    {mgrCreating ? 'Creating your manager…' : '+ Create a SUI/DBUSDC manager you own'}
+                  </button>
+                  {mgrError && <div style={{ fontSize: 11, color: 'var(--danger)', marginTop: 5, lineHeight: 1.5, wordBreak: 'break-word' }}>{mgrError}</div>}
+                  <div style={{ fontSize: 10.5, color: 'var(--faint)', marginTop: 5, lineHeight: 1.5 }}>
+                    Mints an empty margin manager bound to your wallet (needs a little testnet SUI for gas), then fills it in above so you can create a policy on it.
+                  </div>
+                </div>
               )}
             </div>
 
