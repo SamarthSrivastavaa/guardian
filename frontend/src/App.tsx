@@ -17,7 +17,6 @@ const NAV: { id: View; label: string }[] = [
   { id: 'theater', label: 'Rescue Theater' },
   { id: 'saves', label: 'Saves Wall' },
   { id: 'lenders', label: 'For Lenders' },
-  { id: 'status', label: 'Build status' },
   { id: 'docs', label: 'Docs' },
 ];
 

@@ -199,97 +199,96 @@ export function Composer() {
       </div>
 
       {result && (
-        <div className="row fade-in" style={{ marginTop: 4, alignItems: 'flex-start' }}>
-          <div className="card" style={{ flex: 1.1 }}>
-            <div className="card-head"><span className="card-title">Proposed parameters</span>
-              <span className="chip" style={{ background: 'var(--accent)', color: 'var(--ink)', textTransform: 'uppercase' }}>{result.preset}</span></div>
-            <ParamRows p={result.params} />
-            <div className={`pill`} style={{ marginTop: 14, width: '100%', justifyContent: 'flex-start',
-              borderColor: result.valid ? 'var(--safe)' : 'var(--danger)', color: result.valid ? 'var(--safe)' : 'var(--danger)' }}>
-              <span className="dot" style={{ background: result.valid ? 'var(--safe)' : 'var(--danger)' }} />
-              {result.valid ? 'Passes the on-chain safety envelope' : result.errors.join('; ')}
+        <div className="fade-in">
+          {/* Two equal-height review cards */}
+          <div className="row" style={{ marginTop: 4, alignItems: 'stretch' }}>
+            <div className="card" style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
+              <div className="card-head"><span className="card-title">Proposed parameters</span>
+                <span className="chip" style={{ background: 'var(--accent)', color: 'var(--ink)', textTransform: 'uppercase' }}>{result.preset}</span></div>
+              <ParamRows p={result.params} />
+              <div className="pill" style={{ marginTop: 'auto', width: '100%', justifyContent: 'flex-start',
+                borderColor: result.valid ? 'var(--safe)' : 'var(--danger)', color: result.valid ? 'var(--safe)' : 'var(--danger)' }}>
+                <span className="dot" style={{ background: result.valid ? 'var(--safe)' : 'var(--danger)' }} />
+                {result.valid ? 'Passes the on-chain safety envelope' : result.errors.join('; ')}
+              </div>
+            </div>
+
+            <div className="card" style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
+              <span className="card-title">What Guardian may do</span>
+              <ul style={{ listStyle: 'none', margin: '14px 0 0', padding: 0, flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'space-between', gap: 12 }}>
+                <Permission ok text={`Act when risk ratio falls below ${result.params.triggerRr.toFixed(2)}`} />
+                <Permission ok text={`Cancel open orders and repay debt from idle balance to restore RR toward ${result.params.targetRr.toFixed(2)}`} />
+                <Permission ok text="Self-liquidate the instant the protocol allows it — reward returned to you, not a bot" />
+                <Permission text="Move any asset to an address that isn’t yours" />
+                <Permission text="Increase your debt or open new leverage" />
+              </ul>
             </div>
           </div>
 
-          <div className="card" style={{ flex: 1 }}>
-            <span className="card-title">What Guardian may do</span>
-            <ul style={{ listStyle: 'none', marginTop: 14, display: 'flex', flexDirection: 'column', gap: 12 }}>
-              <Permission ok text={`Act when risk ratio falls below ${result.params.triggerRr.toFixed(2)}`} />
-              <Permission ok text={`Cancel open orders and repay debt from idle balance to restore RR toward ${result.params.targetRr.toFixed(2)}`} />
-              <Permission ok text="Self-liquidate the instant the protocol allows it — reward returned to you, not a bot" />
-              <Permission text="Move any asset to an address that isn’t yours" />
-              <Permission text="Increase your debt or open new leverage" />
-            </ul>
-
-            <div style={{ marginTop: 16 }}>
-              <div className="stat-label">Margin manager <span style={{ color: 'var(--faint)', textTransform: 'none' }}>· your SUI/DBUSDC manager</span></div>
-              <input className="field num" style={{ fontSize: 11.5, padding: '9px 11px', marginTop: 5 }} value={managerId}
-                onChange={(e) => { setManagerId(e.target.value); reset(); }} spellCheck={false} />
-              {account && ownerCheck.status === 'ok' && (
-                <div style={{ fontSize: 11, color: 'var(--safe)', marginTop: 5 }}>✓ This wallet owns this manager</div>
-              )}
-              {account && ownerCheck.status === 'mismatch' && (
-                <div style={{ fontSize: 11, color: 'var(--danger)', marginTop: 5, lineHeight: 1.5 }}>
-                  Owned by {ownerCheck.owner ? short(ownerCheck.owner) : 'another address'} — connect that wallet, or paste a
-                  manager this wallet owns. Guardian only binds a policy to a manager you control.
-                </div>
-              )}
-              {account && ownerCheck.status === 'notfound' && (
-                <div style={{ fontSize: 11, color: 'var(--danger)', marginTop: 5 }}>No object with this id on testnet.</div>
-              )}
-
-              {account && ownerCheck.status !== 'ok' && ownerCheck.status !== 'checking' && (
-                <div style={{ marginTop: 9, paddingTop: 9, borderTop: '1px dashed var(--line, #e5e5e5)' }}>
-                  <button className="btn btn-ghost" style={{ fontSize: 11.5, padding: '8px 11px', width: '100%', fontWeight: 600 }}
-                    disabled={mgrCreating} onClick={createManager}>
-                    {mgrCreating ? 'Creating your manager…' : '+ Create a SUI/DBUSDC manager you own'}
-                  </button>
-                  {mgrError && <div style={{ fontSize: 11, color: 'var(--danger)', marginTop: 5, lineHeight: 1.5, wordBreak: 'break-word' }}>{mgrError}</div>}
-                  <div style={{ fontSize: 10.5, color: 'var(--faint)', marginTop: 5, lineHeight: 1.5 }}>
-                    Mints an empty margin manager bound to your wallet (needs a little testnet SUI for gas), then fills it in above so you can create a policy on it.
-                  </div>
-                </div>
-              )}
+          {/* Full-width action bar */}
+          <div className="card" style={{ marginTop: 14 }}>
+            <div className="row" style={{ alignItems: 'flex-end', gap: 16 }}>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div className="stat-label" style={{ marginBottom: 5 }}>Margin manager <span style={{ color: 'var(--faint)', textTransform: 'none' }}>· your SUI/DBUSDC manager</span></div>
+                <input className="field num" style={{ width: '100%', fontSize: 11.5, padding: '10px 11px' }} value={managerId}
+                  onChange={(e) => { setManagerId(e.target.value); reset(); }} spellCheck={false} placeholder="0x…" />
+              </div>
+              <button className="btn btn-primary btn-lg" style={{ width: 240, flex: 'none' }}
+                disabled={!result.valid || !account || creating || !managerId.trim() || !!txDigest || (!!account && ownerCheck.status !== 'ok')} onClick={createPolicy}>
+                {btnLabel}
+              </button>
             </div>
 
-            <button className="btn btn-primary btn-lg" style={{ width: '100%', marginTop: 14 }}
-              disabled={!result.valid || !account || creating || !managerId.trim() || !!txDigest || (!!account && ownerCheck.status !== 'ok')} onClick={createPolicy}>
-              {btnLabel}
-            </button>
+            <div className="row" style={{ alignItems: 'flex-start', justifyContent: 'space-between', marginTop: 8, gap: 14 }}>
+              <div style={{ fontSize: 11, lineHeight: 1.5, flex: 1, minWidth: 0 }}>
+                {account && ownerCheck.status === 'ok' && <span style={{ color: 'var(--safe)' }}>✓ This wallet owns this manager</span>}
+                {account && ownerCheck.status === 'mismatch' && (
+                  <span style={{ color: 'var(--danger)' }}>Owned by {ownerCheck.owner ? short(ownerCheck.owner) : 'another address'} — connect that wallet, or create one below.</span>
+                )}
+                {account && ownerCheck.status === 'notfound' && <span style={{ color: 'var(--danger)' }}>No object with this id on testnet.</span>}
+                {!account && <span style={{ color: 'var(--faint)' }}>Connect a wallet to bind a policy to your manager.</span>}
+              </div>
+              <span style={{ fontSize: 11, color: 'var(--faint)', flex: 'none', whiteSpace: 'nowrap' }}>Tier {result.params.tier} · {TIER_NAME[result.params.tier]}</span>
+            </div>
 
-            {txDigest && (
-              <div className="mono-tag" style={{ marginTop: 10, fontSize: 11, lineHeight: 1.6, border: '1.5px solid var(--safe)', padding: '9px 11px' }}>
-                <b style={{ color: 'var(--safe)' }}>created on testnet</b><br />
-                <a href={suiscanTx(txDigest)} target="_blank" rel="noreferrer">tx {short(txDigest)} ↗</a>
-                {policyId && <><br /><a href={suiscanObj(policyId)} target="_blank" rel="noreferrer">policy {short(policyId)} ↗</a></>}
+            {account && ownerCheck.status !== 'ok' && ownerCheck.status !== 'checking' && (
+              <div style={{ marginTop: 10, paddingTop: 10, borderTop: '1px dashed var(--line, #e5e5e5)' }}>
+                <button className="btn btn-ghost" style={{ fontSize: 11.5, padding: '9px 11px', width: '100%', fontWeight: 600 }}
+                  disabled={mgrCreating} onClick={createManager}>
+                  {mgrCreating ? 'Creating your manager…' : '+ Create a SUI/DBUSDC manager you own'}
+                </button>
+                {mgrError && <div style={{ fontSize: 11, color: 'var(--danger)', marginTop: 6, lineHeight: 1.5, wordBreak: 'break-word' }}>{mgrError}</div>}
               </div>
             )}
 
-            {/* Tier-2 policies can enable unattended autopilot via a non-custodial pre-signed envelope. */}
-            {txDigest && policyId && result.params.tier === 2 && (
-              apStatus === 'on' ? (
-                <div className="mono-tag" style={{ marginTop: 8, fontSize: 11, lineHeight: 1.6, border: '1.5px solid var(--safe)', color: 'var(--safe)', padding: '9px 11px' }}>
-                  ⚡ <b>Autopilot enabled.</b> The keeper will deleverage you before liquidation — no further signing. Your key never left your wallet.
+            {txDigest && (
+              <div className="row" style={{ marginTop: 12, gap: 10, alignItems: 'stretch' }}>
+                <div className="mono-tag" style={{ flex: 1, fontSize: 11, lineHeight: 1.7, border: '1.5px solid var(--safe)', padding: '9px 11px' }}>
+                  <b style={{ color: 'var(--safe)' }}>created on testnet</b> &nbsp;
+                  <a href={suiscanTx(txDigest)} target="_blank" rel="noreferrer">tx {short(txDigest)} ↗</a>
+                  {policyId && <> &nbsp;·&nbsp; <a href={suiscanObj(policyId)} target="_blank" rel="noreferrer">policy {short(policyId)} ↗</a></>}
                 </div>
-              ) : (
-                <div style={{ marginTop: 8 }}>
-                  <button className="btn btn-primary btn-lg" style={{ width: '100%' }}
-                    disabled={apStatus === 'reserving' || apStatus === 'signing' || apStatus === 'posting'} onClick={enableAutopilot}>
-                    {apStatus === 'reserving' ? 'Reserving gas…' : apStatus === 'signing' ? 'Sign the autopilot envelope…' : apStatus === 'posting' ? 'Enrolling with keeper…' : '⚡ Enable autopilot (sign once)'}
-                  </button>
-                  <div style={{ fontSize: 10.5, color: 'var(--faint)', marginTop: 5, lineHeight: 1.5 }}>
-                    Sign one execute-only transaction now; the keeper relays it the moment your risk hits the trigger. Non-custodial — the keeper holds no authority and the tx still passes every on-chain guard.
-                  </div>
-                  {apError && <div className="mono-tag" style={{ marginTop: 6, fontSize: 11, lineHeight: 1.5, border: '1.5px solid var(--danger)', color: 'var(--danger)', padding: '8px 11px', wordBreak: 'break-word' }}>{apError}</div>}
-                </div>
-              )
+                {/* Tier-2: enable unattended autopilot via a non-custodial pre-signed envelope */}
+                {policyId && result.params.tier === 2 && (
+                  apStatus === 'on' ? (
+                    <div className="mono-tag" style={{ flex: 1, fontSize: 11, lineHeight: 1.5, border: '1.5px solid var(--safe)', color: 'var(--safe)', padding: '9px 11px', display: 'flex', alignItems: 'center' }}>
+                      ⚡ <b>&nbsp;Autopilot enabled.</b>&nbsp;Keeper deleverages you before liquidation — no further signing.
+                    </div>
+                  ) : (
+                    <button className="btn btn-primary btn-lg" style={{ flex: 1 }}
+                      disabled={apStatus === 'reserving' || apStatus === 'signing' || apStatus === 'posting'} onClick={enableAutopilot}>
+                      {apStatus === 'reserving' ? 'Reserving gas…' : apStatus === 'signing' ? 'Sign the envelope…' : apStatus === 'posting' ? 'Enrolling…' : 'Enable autopilot (sign once)'}
+                    </button>
+                  )
+                )}
+              </div>
             )}
+            {apError && <div className="mono-tag" style={{ marginTop: 8, fontSize: 11, lineHeight: 1.5, border: '1.5px solid var(--danger)', color: 'var(--danger)', padding: '8px 11px', wordBreak: 'break-word' }}>{apError}</div>}
             {error && (
-              <div className="mono-tag" style={{ marginTop: 10, fontSize: 11, lineHeight: 1.5, border: '1.5px solid var(--danger)', color: 'var(--danger)', padding: '9px 11px', wordBreak: 'break-word' }}>
+              <div className="mono-tag" style={{ marginTop: 8, fontSize: 11, lineHeight: 1.5, border: '1.5px solid var(--danger)', color: 'var(--danger)', padding: '9px 11px', wordBreak: 'break-word' }}>
                 {error.includes('ENotManagerOwner') || error.includes('abort') ? 'This wallet does not own that margin manager (or it isn’t SUI/DBUSDC).' : error}
               </div>
             )}
-            <div style={{ fontSize: 11, color: 'var(--faint)', textAlign: 'center', marginTop: 8 }}>Tier {result.params.tier} · {TIER_NAME[result.params.tier]}</div>
           </div>
         </div>
       )}

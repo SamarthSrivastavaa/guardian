@@ -43,8 +43,10 @@ export function RescueTheater() {
           </div>
         </div>
         <div style={{ display: 'flex', gap: 10 }}>
-          <button className="btn btn-ghost" onClick={() => { stop(); setIdx(0); setSelected(null); }} disabled={playing}>Reset</button>
-          <button className="btn btn-primary btn-lg" onClick={() => play(0)} disabled={playing}>{done ? '↻ Replay' : playing ? 'Crashing…' : '▶ Run the crash'}</button>
+          <button className="btn btn-ghost" onClick={() => { stop(); setIdx(0); setSelected(null); }}>Reset</button>
+          <button className="btn btn-primary btn-lg" onClick={playing ? stop : () => play(done ? 0 : idx)}>
+            {playing ? '⏸ Pause' : done ? '↻ Replay' : idx > 0 ? '▶ Resume' : '▶ Run the crash'}
+          </button>
         </div>
       </div>
 
