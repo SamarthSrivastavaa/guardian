@@ -112,7 +112,7 @@ Guardian is precise about its surface. *Live* = shipped and verifiable, *Simulat
 | Auto-Walrus receipts | **Live** | Keeper anchors a `guardian.rescue.v1` receipt after every action |
 | Policy composer / action explainer | **Live** | Deterministic; validated against the on-chain envelope; no LLM by design |
 | Rescue Theater · Saves Wall · Lenders | **Simulated** | Real engine/logic + real Walrus receipts & testnet txs on sample data |
-| Independent security audit | **Roadmap** | Scope drafted in [`AUDIT_SCOPE.md`](./AUDIT_SCOPE.md); required before mainnet |
+| Independent security audit | **Roadmap** | Threat model + invariants scoped; required before mainnet |
 | Mainnet | **Roadmap** | Mainnet-capable; gated on the audit + funded keeper + mainnet margin link |
 
 ## Why DeepBook
@@ -155,7 +155,7 @@ scripts/        deploy · protect (live proof) · keeper runner
 - **Non-custodial.** Guardian never holds your keys or funds; you authorize a precise, revocable scope and nothing more.
 - **Reduce-only, enforced on-chain.** The executor's debt-monotonic postcondition rejects any action that increases your debt, and collateral is only ever forwarded to the owner.
 - **Adversarial by design.** The keeper and network are assumed hostile; on-chain guards (trigger, rate-limit, policy↔manager binding) gate every action regardless of who broadcasts it.
-- **Honest about scope.** [`AUDIT_SCOPE.md`](./AUDIT_SCOPE.md) defines the threat model and invariants for a third-party audit; [`KNOWN_ISSUES.md`](./KNOWN_ISSUES.md) tracks deferred items.
+- **Honest about scope.** A documented threat model and invariant set defines the surface for a third-party audit, with deferred items tracked separately.
 
 ## License
 
